@@ -1,0 +1,35 @@
+/.env
+/vendor/
+/storage/*
+!/storage/.gitkeep
+
+# Credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+auth.json
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Local data and backups
+*.sql
+*.sql.gz
+*.bak
+*.zip
+
+# Private uploads and runtime files
+/storage/uploads/
+/storage/private/
+/storage/logs/
+/storage/cache/
+/storage/sessions/
+
+# IDE and operating system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

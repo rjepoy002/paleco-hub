@@ -1,0 +1,1 @@
+<div class="surface form-panel error-card"><div class="eyebrow">PALECO HUB</div><h1>Let’s get you back on track.</h1><p><?= e($message) ?></p><a class="btn btn-navy" href="<?= e(url($user?'/dashboard':'/login')) ?>">Return to <?= $user?'dashboard':'sign-in' ?></a></div>

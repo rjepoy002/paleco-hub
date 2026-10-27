@@ -1,0 +1,12 @@
+Options -Indexes
+RewriteEngine On
+RewriteRule ^(?:app|config|database|storage|vendor|tests|bin|docs)(?:/|$) - [F,L,NC]
+RewriteRule (^|/)\. - [F,L]
+RewriteCond %{THE_REQUEST} \s/+paleco-hub/public(?:[/\s?]) [NC]
+RewriteRule ^public/ - [F,L]
+RewriteRule ^public/(?:assets/[^/]+|manifest\.json|sw\.js)$ - [END]
+RewriteRule ^(?:composer\.(?:json|lock)|README\.md|FILES\.md)$ - [F,L,NC]
+RewriteRule ^assets/(.*)$ public/assets/$1 [L]
+RewriteRule ^(manifest.json|sw.js)$ public/$1 [L]
+RewriteRule ^public/ - [F,L]
+RewriteRule ^ index.php [QSA,L]

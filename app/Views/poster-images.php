@@ -1,0 +1,1 @@
+<?php foreach(\App\Services\Attachments::all((int)$record['id']) as $poster): ?><img class="poster-preview mb-3" src="<?= e(local_url('/image?attachment='.$poster['id'])) ?>" alt="<?= e($record['title']) ?> — poster <?= e($poster['sort_order']+1) ?>"><?php endforeach; ?>

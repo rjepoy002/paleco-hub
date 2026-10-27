@@ -1,4 +1,8 @@
 Options -Indexes
+<IfModule php_module>
+    php_value upload_max_filesize 8M
+    php_value post_max_size 85M
+</IfModule>
 RewriteEngine On
 RewriteRule ^(?:app|config|database|storage|vendor|tests|bin|docs)(?:/|$) - [F,L,NC]
 RewriteRule (^|/)\. - [F,L]

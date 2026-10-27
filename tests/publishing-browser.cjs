@@ -11,18 +11,14 @@ const path=require('node:path');
   await context.addCookies([{name:'PALECOHUB',value:cookie,url:base+'/',httpOnly:true,sameSite:'Lax'}]);
   const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/partial');await page.locator('#body').fill('Power Service Advisory\n\nBrowser publishing fixture.\nAll text stays safe.');await page.locator('#title').fill('Browser publishing advisory');
-  await page.getByRole('button',{name:'Save and review for WordPress'}).click();await page.waitForURL('**/announcement?id=*');
-  const reviewUrl=page.url();await page.getByRole('button',{name:'Save as WordPress Draft',exact:true}).click();await page.waitForURL(reviewUrl);
-  await page.getByRole('link',{name:'Open WordPress draft link'}).waitFor();
-  const idBefore=await page.locator('.col-lg-4 section p').first().textContent();
-  await page.getByRole('button',{name:'Publish to WordPress',exact:true}).click();await page.locator('#publish-dialog').waitFor({state:'visible'});
-  assert.ok(await page.locator('#publish-dialog').getByText('Browser publishing advisory',{exact:true}).isVisible());
-  assert.ok(await page.locator('#publish-dialog').getByText('POWER_ADVISORY',{exact:true}).isVisible());
-  await page.locator('#publish-dialog [name=confirmed]').check();await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL(reviewUrl);
+  await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});
+  assert.ok(await page.locator('#partial-confirm').getByText('Browser publishing advisory',{exact:true}).isVisible());
+  assert.ok(await page.locator('#partial-confirm').getByText('WordPress category: POWER_ADVISORY',{exact:true}).isVisible());
+  await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL('**/announcement?id=*');
+  const reviewUrl=page.url();const idBefore=await page.locator('.col-lg-4 section p').first().textContent();
   await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();
   assert.equal(await page.locator('.col-lg-4 section p').first().textContent(),idBefore);
-  await page.getByRole('link',{name:'Edit local announcement'}).click();await page.locator('#title').fill('Browser edited advisory');await page.getByRole('button',{name:'Save and review for WordPress'}).click();
-  await page.getByRole('button',{name:'Publish update to WordPress'}).click();await page.locator('#publish-dialog [name=confirmed]').check();await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL(reviewUrl);
+  await page.getByRole('link',{name:'Edit local announcement'}).click();await page.locator('#title').fill('Browser edited advisory');await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL(reviewUrl);
   await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();assert.equal(await page.locator('.col-lg-4 section p').first().textContent(),idBefore);
   await page.screenshot({path:path.join(__dirname,'../storage/screenshots/phase2-review-desktop.png'),fullPage:true});
   for(const width of [390,360,768]){
@@ -33,7 +29,7 @@ const path=require('node:path');
    await page.getByRole('button',{name:'Cancel',exact:true}).click();
   }
   await page.screenshot({path:path.join(__dirname,'../storage/screenshots/phase2-review-mobile.png'),fullPage:true});
-  await page.goto(base+'/scheduled');await page.locator('#poster').setInputFiles(path.join(__dirname,'../public/assets/paleco-logo.png'));await page.locator('#date').fill('2026-10-25');await page.locator('#date').dispatchEvent('change');await page.locator('[name=date_confirmed]').check();await page.getByRole('button',{name:'Save and review for WordPress'}).click();
+  await page.goto(base+'/scheduled');await page.locator('#poster').setInputFiles(path.join(__dirname,'../public/assets/paleco-logo.png'));await page.locator('#date').fill('2026-10-25');await page.locator('#date').dispatchEvent('change');await page.locator('[name=date_confirmed]').check();await page.getByRole('button',{name:'Publish to WordPress'}).click();
   await page.getByRole('button',{name:'Publish to WordPress',exact:true}).click();await page.locator('#publish-dialog [name=confirmed]').check();await page.getByRole('button',{name:'Confirm and publish'}).click();await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();
   assert.deepEqual(errors,[]);console.log('BROWSER PASS: text draft, modal confirmation, same-post publication/update, poster publishing and mobile review layouts.');
  }finally{await browser.close();}

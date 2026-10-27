@@ -39,8 +39,18 @@ final class Auth {
     public static function provider(): \League\OAuth2\Client\Provider\Google {
         return new GoogleProvider(['clientId'=>env('GOOGLE_CLIENT_ID'),'clientSecret'=>env('GOOGLE_CLIENT_SECRET'),'redirectUri'=>env('GOOGLE_REDIRECT_URI',url('/auth/google/callback'))]);
     }
+    public static function originMatchesCallback(): bool {
+        $scheme=(!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off')?'https':'http';
+        $request=parse_url($scheme.'://'.($_SERVER['HTTP_HOST'] ?? ''));
+        $callback=parse_url(env('GOOGLE_REDIRECT_URI',url('/auth/google/callback')));
+        if(!$request || !$callback || isset($request['user']) || isset($request['pass']) || isset($request['path']) || isset($request['query']) || isset($request['fragment'])) return false;
+        return ($callback['scheme'] ?? '')===$scheme
+            && strcasecmp($request['host'] ?? '',$callback['host'] ?? '')===0
+            && ($request['port'] ?? ($scheme==='https'?443:80))===($callback['port'] ?? (($callback['scheme'] ?? '')==='https'?443:80));
+    }
     public static function redirect(): never {
         if (!env('GOOGLE_CLIENT_ID') || !env('GOOGLE_CLIENT_SECRET') || !class_exists(\League\OAuth2\Client\Provider\Google::class)) throw new \RuntimeException('Google Sign-In awaits configuration. Follow the setup guide to connect this application.');
+        if(!self::originMatchesCallback()) throw new \RuntimeException('Google Sign-In requires the configured OAuth origin so the callback can use this browser session. For phone sign-in, ask an administrator to configure a registered HTTPS hostname.');
         $p=self::provider(); $auth=$p->getAuthorizationUrl(['scope'=>['openid','email','profile'],'prompt'=>'select_account']);
         $_SESSION['oauth']=['state'=>$p->getState(),'pkce'=>$p->getPkceCode(),'expires'=>time()+600,'remember'=>isset($_POST['remember'])];
         header('Location: '.$auth); exit;

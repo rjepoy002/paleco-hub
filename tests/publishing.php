@@ -69,3 +69,5 @@ if(in_array('--browser',$argv,true)){
     $browserProcess=proc_open(['node',ROOT.'/tests/publishing-browser.cjs','http://127.0.0.1:'.$port.'/paleco-hub',$httpAdmin],[0=>STDIN,1=>STDOUT,2=>STDERR],$browserPipes,ROOT);
     check(proc_close($browserProcess)===0,'desktop and mobile publishing browser workflows');
 }
+require ROOT.'/tests/partial-form.php';
+require ROOT.'/tests/multi-history.php';

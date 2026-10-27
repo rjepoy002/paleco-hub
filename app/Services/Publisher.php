@@ -22,7 +22,10 @@ final class Publisher {
         $c=DB::query('SELECT * FROM wordpress_connections WHERE id=1')->fetch() ?: [];
         $mapping=self::mapping($a['type']);
         $key=base64_decode(env('APP_KEY'),true); if (!$key || strlen($key)!==32) throw new \RuntimeException('A valid server encryption key is required.');
-        return hash_hmac('sha256',json_encode([$a['id'],$a['revision'],$a['title'],$a['body'],$a['image_path'],$a['interruption_date'],$c,$mapping],JSON_THROW_ON_ERROR),$key);
+        $posters=$a['type']==='scheduled'?array_map(fn($p)=>[$p['id'],$p['storage_name'],$p['mime'],$p['sort_order']],Attachments::all((int)$a['id'])):[];
+        $review=[$a['id'],$a['revision'],$a['title'],$a['body'],$a['image_path'],$a['interruption_date'],$c,$mapping];
+        if($a['type']==='scheduled')$review[]=$posters;
+        return hash_hmac('sha256',json_encode($review,JSON_THROW_ON_ERROR),$key);
     }
     public static function status(array $a): string {
         return match($a['status']) { 'draft'=>'Local Draft','wordpress_draft'=>'WordPress Draft','publishing'=>'Publishing','published'=>'Published','failed'=>'Failed',default=>ucfirst($a['status']) };
@@ -55,7 +58,7 @@ final class Publisher {
                     $pending=json_decode($a['pending_payload'] ?? '',true);
                     if (!is_array($pending) || !isset($pending['remote'],$pending['media_id'])) throw new WordPressFailure('The poster attachment needs administrator reconciliation.',true);
                     $writing=true;
-                    $this->attachMedia($client,(int)$pending['media_id'],(int)$pending['remote']['id']);
+                    foreach(($pending['media_ids'] ?? [$pending['media_id']]) as $mediaId)$this->attachMedia($client,(int)$mediaId,(int)$pending['remote']['id']);
                     $this->finish($id,$userId,$attempt,$pending['remote'],'Reconciled the poster attachment and WordPress post.');
                     return self::find($id);
                 }
@@ -66,7 +69,7 @@ final class Publisher {
                     if ($a['type']==='scheduled') {
                         $this->prepareAttachment($id,$remote,(int)$a['wordpress_media_id']);
                         $writing=true;
-                        $this->attachMedia($client,(int)$a['wordpress_media_id'],$remote['id']);
+                        foreach(ScheduledMedia::ids($id) as $mediaId)$this->attachMedia($client,$mediaId,$remote['id']);
                     }
                     $this->finish($id,$userId,$attempt,$remote,'Reconciled the previous WordPress write.');
                     $a=self::find($id);
@@ -76,10 +79,7 @@ final class Publisher {
                 if ($a['uncertain_stage']==='media') {
                     $pending=json_decode($a['pending_payload'] ?? '',true);
                     if (!is_array($pending) || !isset($pending['slug'],$pending['marker'],$pending['hash'])) throw new WordPressFailure('A prior media upload needs administrator reconciliation.',true);
-                    $matches=$client->request('GET','/media?context=edit&slug='.rawurlencode($pending['slug']).'&per_page=100');
-                    if (count($matches)!==1) throw new WordPressFailure('The earlier poster upload is still uncertain. No new upload was made. Retry reconciliation later or ask an administrator to inspect WordPress Media.',true);
-                    $media=$client->media($matches[0],$pending['marker']);
-                    $this->saveMedia($id,$media,$pending['hash']); $a=self::find($id);
+                    ScheduledMedia::recover($client,$a,$pending); $a=self::find($id);
                 }
                 $category=$client->category(self::mapping($a['type']));
                 if (!trim($a['title']) || mb_strlen($a['title'])>255) throw new \RuntimeException('A valid announcement title is required.');
@@ -88,22 +88,12 @@ final class Publisher {
                 DB::query('UPDATE announcements SET remote_key=?,wordpress_destination=? WHERE id=?',[$remoteKey,$destination,$id]); $a['remote_key']=$remoteKey;
                 $payload=['slug'=>$remoteKey,'status'=>$action,'title'=>e($a['title']),'content'=>'','categories'=>[$category]];
                 if ($a['type']==='scheduled') {
-                    Announcement::dateTitle($a['interruption_date'] ?? '');
-                    $path=Uploads::path($a['image_path'] ?? ''); $mime=Uploads::validate($path); $hash=hash_file('sha256',$path);
-                    if (!$a['wordpress_media_id'] || $a['wordpress_media_hash']!==$hash) {
-                        $slug=$remoteKey.'-'.substr($hash,0,16); $marker='paleco-hub-media:'.$remoteKey.':'.$hash;
-                        $pending=['slug'=>$slug,'marker'=>$marker,'hash'=>$hash];
-                        $this->pending($id,'media',$pending);
-                        $extension=['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'][$mime];
-                        $writing=true;
-                        $result=$client->request('POST','/media',['slug'=>$slug,'title'=>$payload['title'],'description'=>$marker,'alt_text'=>$a['title']],['path'=>$path,'mime'=>$mime,'name'=>$slug.'.'.$extension]);
-                        $media=$client->media($result,$marker); $this->saveMedia($id,$media,$hash); $writing=false; $a=self::find($id);
-                    }
-                    $imageUrl=$client->safeLink($a['wordpress_media_url']);
-                    $payload['featured_media']=(int)$a['wordpress_media_id'];
-                    $payload['content']='<figure class="wp-block-image"><img src="'.e($imageUrl).'" alt="'.e($a['title']).'" class="wp-image-'.(int)$a['wordpress_media_id'].'" /></figure>';
+                    $writing=true;
+                    $posterPayload=ScheduledMedia::payload($client,$a,$remoteKey,fn($stage,$data)=>$this->pending($id,$stage,$data));
+                    $writing=false;
+                    $payload=array_merge($payload,$posterPayload); $a=self::find($id);
                 } else {
-                    $payload['content']='<p>'.nl2br(e(str_replace(["\r\n","\r"],"\n",$a['body'])),false).'</p>';
+                    $payload['content']='<p>'.nl2br(e(Announcement::publicationBody($a['body'])),false).'</p>';
                 }
                 $payload['content'].="\n<!-- paleco-hub:".$remoteKey.' -->';
                 // Verify ownership marker before updating a previously recorded post.
@@ -119,7 +109,7 @@ final class Publisher {
                 $remote=$client->post($result,$payload,$a['wordpress_post_id']?(int)$a['wordpress_post_id']:null);
                 if ($a['type']==='scheduled') {
                     $this->prepareAttachment($id,$remote,(int)$a['wordpress_media_id']);
-                    $this->attachMedia($client,(int)$a['wordpress_media_id'],$remote['id']);
+                    foreach(ScheduledMedia::ids($id) as $mediaId)$this->attachMedia($client,$mediaId,$remote['id']);
                 }
                 $this->finish($id,$userId,$attempt,$remote,$action==='publish'?'Published to WordPress.':'Saved as a WordPress draft.');
                 return self::find($id);
@@ -131,7 +121,7 @@ final class Publisher {
                 if ($writing && $current['uncertain_stage']!=='attachment' && $ex instanceof WordPressFailure && !$ex->uncertain) { $uncertain=false; DB::query('UPDATE announcements SET uncertain_stage=NULL,pending_payload=NULL WHERE id=?',[$id]); }
                 $safe=($ex instanceof WordPressFailure || get_class($ex)===\RuntimeException::class)?$ex->getMessage():'The result could not be recorded. Retry reconciliation before another write.';
                 $safe=mb_substr($safe,0,500);
-                DB::query("UPDATE announcements SET status='failed',publish_error=? WHERE id=?",[$safe,$id]);
+                DB::query("UPDATE announcements SET status='failed',publish_error=?,history_hidden_at=NULL,history_hidden_by=NULL WHERE id=?",[$safe,$id]);
                 DB::query('UPDATE publishing_attempts SET outcome=?,message=?,wordpress_post_id=?,finished_at=UTC_TIMESTAMP() WHERE id=?',[$uncertain?'uncertain':'failed',$safe,$current['wordpress_post_id'],$attempt]);
                 DB::query("INSERT INTO publishing_history (announcement_id,user_id,status,wordpress_post_id,message) VALUES (?,?,'failed',?,?)",[$id,$userId,$current['wordpress_post_id'],mb_substr($safe,0,255)]);
                 throw new \RuntimeException($safe);
@@ -147,7 +137,7 @@ final class Publisher {
     private function prepareAttachment(int $id,array $remote,int $mediaId): void {
         // Record the accepted post identity before another network operation can fail.
         DB::query('UPDATE announcements SET wordpress_post_id=?,wordpress_post_url=?,wordpress_status=? WHERE id=?',[$remote['id'],$remote['url'],$remote['status'],$id]);
-        $this->pending($id,'attachment',['remote'=>$remote,'media_id'=>$mediaId]);
+        $this->pending($id,'attachment',['remote'=>$remote,'media_id'=>$mediaId,'media_ids'=>ScheduledMedia::ids($id)]);
     }
     private function attachMedia(WordPressClient $client,int $mediaId,int $postId): void {
         $media=$client->request('GET','/media/'.$mediaId.'?context=edit');
@@ -169,7 +159,7 @@ final class Publisher {
         $db=DB::connection(); $db->beginTransaction();
         try {
             $status=$remote['status']==='publish'?'published':'wordpress_draft';
-            DB::query('UPDATE announcements SET wordpress_post_id=?,wordpress_post_url=?,wordpress_status=?,status=?,synced_revision=revision,wordpress_saved_at=UTC_TIMESTAMP(),published_at=IF(?=\'publish\',COALESCE(published_at,UTC_TIMESTAMP()),published_at),uncertain_stage=NULL,pending_payload=NULL,publish_error=NULL WHERE id=?',[$remote['id'],$remote['url'],$remote['status'],$status,$remote['status'],$id]);
+            DB::query('UPDATE announcements SET wordpress_post_id=?,wordpress_post_url=?,wordpress_status=?,status=?,synced_revision=revision,wordpress_saved_at=UTC_TIMESTAMP(),published_at=IF(?=\'publish\',COALESCE(published_at,UTC_TIMESTAMP()),published_at),uncertain_stage=NULL,pending_payload=NULL,publish_error=NULL,history_hidden_at=NULL,history_hidden_by=NULL WHERE id=?',[$remote['id'],$remote['url'],$remote['status'],$status,$remote['status'],$id]);
             DB::query('UPDATE publishing_attempts SET outcome=?,wordpress_post_id=?,message=?,finished_at=UTC_TIMESTAMP() WHERE id=?',[$status,$remote['id'],$message,$attempt]);
             DB::query('INSERT INTO publishing_history (announcement_id,user_id,status,wordpress_post_id,message) VALUES (?,?,?,?,?)',[$id,$userId,$status,$remote['id'],$message]);
             DB::audit($userId,'wordpress.'.$status); $db->commit();

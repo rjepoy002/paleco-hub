@@ -29,11 +29,14 @@ final class FakeWordPressTransport implements WordPressTransport {
         if($method==='GET' && preg_match('~^/(posts|media)/(\d+)$~',$route,$m))return isset($this->state[$m[1]][$m[2]])?$this->result($this->state[$m[1]][$m[2]]):$this->result([],404);
         if($method==='GET' && in_array($route,['/posts','/media'],true))return $this->result(array_values(array_filter($this->state[substr($route,1)],fn($p)=>$p['slug']===($query['slug'] ?? ''))));
         if($method==='POST' && $route==='/media') {
+            $this->state['media_upload_calls']=($this->state['media_upload_calls'] ?? 0)+1;
+            if(($this->state['reject_media_number'] ?? 0)===$this->state['media_upload_calls'])return $this->result([],415);
             if($mode==='media-rejected')return $this->result([],415);
             if($mode==='media-timeout-before')throw new WordPressFailure('The media result is uncertain.',true);
             if(!$file || !is_file($file['path']))throw new LogicException('Missing test poster.');
             $id=++$this->state['next'];$item=['id'=>$id,'slug'=>$data['slug'],'mime_type'=>$file['mime'],'description'=>['raw'=>$data['description']],'source_url'=>'https://wordpress.example.invalid/wp-content/uploads/'.$file['name']];
             $this->state['media'][$id]=$item;
+            if(($this->state['timeout_media_number'] ?? 0)===$this->state['media_upload_calls'])throw new WordPressFailure('A selected poster may have been accepted before timeout.',true);
             if($mode==='media-timeout'){$this->state['mode']='ok';throw new WordPressFailure('WordPress timed out after the media may have been accepted.',true);}
             return $this->result($item,201);
         }

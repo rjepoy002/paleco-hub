@@ -3,6 +3,7 @@ namespace App\Services;
 use App\Models\DB;
 final class Drafts {
     public static function save(string $type,int $userId,array $input,?array $file): int {
+        if($type==='scheduled')return ScheduledDrafts::save($userId,$input,$file);
         Publisher::authorize($userId);
         if (!in_array($type,['partial','scheduled'],true)) throw new \RuntimeException('Invalid announcement module.');
         $id=(int)($input['id'] ?? 0);

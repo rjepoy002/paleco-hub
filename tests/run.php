@@ -79,7 +79,7 @@ try {
 } finally {
     if(is_resource($server)){proc_terminate($server);proc_close($server);}
     $fixture=ROOT.'/storage/wp-fixture-'.$database.'.json';if(is_file($fixture))unlink($fixture);
-    if($pdo){foreach($pdo->query('SELECT image_path FROM announcements WHERE image_path IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN) as $image){if(preg_match('/^[a-f0-9]{48}$/',$image)&&is_file(ROOT.'/storage/uploads/'.$image))unlink(ROOT.'/storage/uploads/'.$image);}}
+    if($pdo){foreach($pdo->query('SELECT image_path FROM announcements WHERE image_path IS NOT NULL UNION SELECT storage_name FROM announcement_attachments')->fetchAll(PDO::FETCH_COLUMN) as $image){if(preg_match('/^[a-f0-9]{48}$/',$image)&&is_file(ROOT.'/storage/uploads/'.$image))unlink(ROOT.'/storage/uploads/'.$image);}}
     foreach($sessions as $sid){$file=rtrim(session_save_path(),'\\/').DIRECTORY_SEPARATOR.'sess_'.$sid;if(is_file($file))unlink($file);}
     // Only the random, explicitly created test database may be dropped.
     if($pdo && preg_match('/^paleco_hub_test_[a-f0-9]{12}$/',$database) && $database!==$originalDatabase)$pdo->exec('DROP DATABASE IF EXISTS `'.$database.'`');

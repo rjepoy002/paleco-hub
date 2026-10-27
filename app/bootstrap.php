@@ -11,6 +11,13 @@ if (is_file(ROOT.'/vendor/autoload.php')) {
 function env(string $key, string $default = ''): string { $system=getenv($key); return $system!==false ? $system : (string)($_ENV[$key] ?? $default); }
 function e(mixed $value): string { return htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'); }
 function url(string $path = ''): string { return rtrim(env('APP_URL','http://localhost/paleco-hub'),'/').$path; }
+// Browser resources stay on the current origin; only the configured deployment path is reused.
+// Do not construct absolute URLs from the untrusted Host / forwarded headers.
+function local_url(string $path = ''): string {
+    $base=rtrim((string)parse_url(url(),PHP_URL_PATH),'/');
+    return $base.($path===''?'':'/'.ltrim($path,'/'));
+}
+function asset(string $path): string { return local_url('/assets/'.ltrim($path,'/')); }
 function go(string $path): never { header('Location: '.url($path)); exit; }
 function csrf(): string { return '<input type="hidden" name="_token" value="'.e($_SESSION['csrf']).'">'; }
 if (PHP_SAPI !== 'cli') {

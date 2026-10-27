@@ -2,6 +2,30 @@
 
 The existing Phase 1 application was extended in place. DocRoute v2 was not modified.
 
+## Scheduled multi-poster / history-management update
+
+Created: `database/migrations/003_multi_posters_history.php`, `app/Services/Attachments.php`, `app/Services/ScheduledDrafts.php`, `app/Services/ScheduledMedia.php`, `app/Services/History.php`, `app/Views/scheduled.php`, `app/Views/history-announcements.php`, `app/Views/poster-images.php`, `public/assets/scheduled.js`, `public/assets/history.js`, `tests/multi-history.php`, `tests/multi-history-browser.cjs`, `docs/multi-posters-history.md`.
+
+Modified: `.env.example`, `.htaccess`, `app/Controllers/HubController.php`, `app/Services/Drafts.php`, `app/Services/Publisher.php`, `app/Views/announcement.php`, `app/Views/history.php`, `app/Views/review.php`, `public/assets/app.js`, `public/assets/app.css`, `tests/FakeWordPressTransport.php`, `tests/browser.cjs`, `tests/publishing-browser.cjs`, `tests/publishing.php`, `tests/run.php`, `README.md`, `FILES.md`.
+
+Private pre-migration snapshot: `storage/private/pre-multi-posters-20261027-071856.json` (ignored and not web-accessible). Installed migration is additive; no actual history entries were deleted during implementation. Partial-update workflow, WordPress configuration/categories and authentication are preserved. Previous task changes listed below remain intact.
+
+## LAN asset and mobile login update
+
+Created: `tests/lan-assets.cjs`, `docs/lan-assets.md`.
+
+Modified for this update: `app/bootstrap.php` (same-origin path helpers), `app/Views/layout.php`, `app/Views/login.php`, `app/Views/partial.php` (asset references), `app/Services/Auth.php` (callback-origin check), `app/Controllers/HubController.php` (local auth-error redirect), `public/assets/app.css` (login-only styling), `README.md`, `FILES.md`.
+
+The CSP, Apache configuration, `.env`, OAuth callback values, WordPress integration and database schema are unchanged. Previous uncommitted partial-form work remains intact.
+
+## Partial form simplification update
+
+Created: `app/Services/PartialPublication.php`, `app/Views/partial.php`, `public/assets/partial.js`, `tests/partial-form.php`, `tests/partial-browser.cjs`, `docs/partial-publishing-form.md`.
+
+Modified: `app/Controllers/HubController.php`, `app/Services/Announcement.php`, `app/Services/Publisher.php`, `app/Views/announcement.php`, `public/assets/app.js`, `public/assets/app.css`, `tests/browser.cjs`, `tests/publishing-browser.cjs`, `tests/publishing.php`, `README.md`, `FILES.md`.
+
+No schema, authentication, WordPress credential/configuration or scheduled-module behavior changes. Existing backend draft functionality is retained.
+
 ## Phase 2 created files
 
 - `app/Services/AnnouncementLock.php`

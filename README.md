@@ -42,6 +42,8 @@ php bin/approve-user.php approved@example.com "Full Name" Administrator
 
 ## Google Sign-In
 
+For LAN/mobile rendering and the separate Google callback limitation, see [mobile assets and LAN access](docs/lan-assets.md). Assets stay on the origin being viewed. The private-IP login page can render normally, but phone authentication requires a deliberately configured, registered HTTPS hostname; the existing localhost callback is not silently rewritten.
+
 Use the existing organization's Google Cloud project and a Web application OAuth client configured for Hub. Enter credentials locally in `.env`; never paste secrets into chat or source control:
 
 ```dotenv
@@ -56,6 +58,10 @@ Register that exact callback in Google Cloud. If consent is in Testing, add the 
 Chrome checks CSP on the form's redirect to Google. The retained policy permits `form-action 'self' https://accounts.google.com`, with all other directives restricted. `APP_URL`, browser URL, and registered callback must use consistent origins. DocRoute v2 was not modified and its secrets were not copied.
 
 ## Daily workflow
+
+Scheduled interruptions now support ordered multiple posters, per-image previews/removal, Local Draft, WordPress Draft and explicitly confirmed publication. Publishing History has local-only Delete and Administrator Clear History with preserved drafts/synchronization state. See [multi-poster and history guide](docs/multi-posters-history.md) for migration `003_multi_posters_history`, limits, permissions and verification.
+
+**Partial Power Interruption Update now uses Publish and Cancel only.** Its title is detected automatically and remains editable. Publish opens a final confirmation and sends a public post only after confirmation; it creates no draft. Cancel confirms discarding changed content. Errors preserve the form for safe retry. See [partial publishing form](docs/partial-publishing-form.md). The scheduled-poster workflow and backend/history draft functions below remain available.
 
 1. Open Partial Power Interruption Update or Scheduled Power Interruption. Paste text or choose a validated poster and confirm the actual interruption date.
 2. **Save draft** keeps everything local. **Save and review for WordPress** also saves locally, then opens the saved version's review screen.
@@ -74,7 +80,7 @@ composer validate --strict
 composer audit --no-interaction
 ```
 
-The complete browser run currently passes **119 checks**, including the original auth/session/draft checks and mocked publishing tests. Tests create a random isolated `paleco_hub_test_*` database and remove it afterward. The fake WordPress transport has no HTTP implementation and accepts only `https://wordpress.example.invalid`; no real WordPress credentials or live APIs are used. Test accounts are isolated from installed Hub users.
+The complete browser run currently passes **197 checks**, including the original auth/session/draft checks, mocked publishing tests, simplified partial-form checks, multi-poster uploads and local history management. Tests create a random isolated `paleco_hub_test_*` database and remove it afterward. The fake WordPress transport has no HTTP implementation and accepts only `https://wordpress.example.invalid`; no real WordPress credentials or live APIs are used. Test accounts are isolated from installed Hub users.
 
 Optional browser QA uses installed Chrome and Playwright under ignored `storage/qa/`:
 

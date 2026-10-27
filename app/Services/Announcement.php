@@ -10,6 +10,6 @@ final class Announcement {
     public static function dateTitle(string $date): string {
         $d=\DateTimeImmutable::createFromFormat('!Y-m-d',$date);
         if (!$d || $d->format('Y-m-d')!==$date) throw new \RuntimeException('Enter a valid interruption date.');
-        return 'Scheduled Power Interruption ['.$d->format('F j, Y').']';
+        return 'Scheduled Power Interruption '.$d->format('F j, Y');
     }
 }

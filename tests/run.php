@@ -11,7 +11,7 @@ function rejects(callable $action,string $name): void { try { $action(); } catch
 check(Announcement::title("\nPower Service Advisory Final Update 10/23/26 12:00 PM\n\nRestored.")==='Power Service Advisory Final Update 10/23/26 12:00 PM','original title preserved');
 check(Announcement::title("  POWER SERVICE ADVISORY  \nMessage")==='  POWER SERVICE ADVISORY  ','title whitespace and case preserved');
 check(str_starts_with(Announcement::title('No original title'),'Partial Power Interruption Update'),'fallback generated');
-check(Announcement::dateTitle('2026-10-25')==='Scheduled Power Interruption [October 25, 2026]','scheduled date title');
+check(Announcement::dateTitle('2026-10-25')==='Scheduled Power Interruption October 25, 2026','scheduled date title');
 rejects(fn()=>Announcement::dateTitle('2026-02-30'),'invalid dates rejected'); rejects(fn()=>Announcement::dateTitle(''),'missing dates never guessed');
 foreach(['http://paleco.net','https://127.0.0.1','https://[::1]','https://user:pass@paleco.net','https://paleco.net:8443','https://localhost','https://paleco.net/?token=secret'] as $unsafe) rejects(fn()=>WordPress::validateUrl($unsafe),'unsafe endpoint blocked: '.$unsafe);
 $secret='test application password';$cipher=WordPress::encrypt($secret);check($cipher!==$secret && WordPress::decrypt($cipher)===$secret,'authenticated credential encryption round trip');
@@ -35,6 +35,7 @@ try {
     $pdo=new PDO('mysql:host='.env('DB_HOST','127.0.0.1').';port='.env('DB_PORT','3306'),env('DB_USERNAME','root'),env('DB_PASSWORD'),[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION]);
     $pdo->exec('CREATE DATABASE `'.$database.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');$pdo->exec('USE `'.$database.'`');foreach(explode(';',file_get_contents(ROOT.'/database/schema.sql')) as $sql)if(trim($sql))$pdo->exec($sql);
     $_ENV['DB_DATABASE']=$database;
+    App\Services\Migrations::run();
     App\Models\DB::query("INSERT INTO users(email,name,role_id) VALUES ('admin@example.invalid','Test Administrator',1),('publisher@example.invalid','Test Publisher',2)");
     // Session files are created through PHP's native handler, with no test bypass in application code.
     [$admin,$adminCsrf,$adminAuth]=seedSession(1,'Integration admin');[$publisher,$pubCsrf,$pubAuth]=seedSession(2,'Integration publisher');
@@ -73,9 +74,11 @@ try {
     App\Models\DB::query('UPDATE login_sessions SET revoked_at=UTC_TIMESTAMP() WHERE id=?',[$pubAuth]);[$code]=request('/dashboard',$publisher);check($code===302,'revoked session cannot access dashboard');
     App\Models\DB::query('UPDATE login_sessions SET last_seen=DATE_SUB(UTC_TIMESTAMP(),INTERVAL 3 HOUR) WHERE id=?',[$adminAuth]);[$code]=request('/dashboard',$admin);check($code===302,'idle session expires');
     check((int)App\Models\DB::query('SELECT COUNT(*) FROM publishing_history')->fetchColumn()===0,'no publishing occurred');
+    require ROOT.'/tests/publishing.php';
     echo "$passed tests passed. Isolated test data will be removed.\n";
 } finally {
     if(is_resource($server)){proc_terminate($server);proc_close($server);}
+    $fixture=ROOT.'/storage/wp-fixture-'.$database.'.json';if(is_file($fixture))unlink($fixture);
     if($pdo){foreach($pdo->query('SELECT image_path FROM announcements WHERE image_path IS NOT NULL')->fetchAll(PDO::FETCH_COLUMN) as $image){if(preg_match('/^[a-f0-9]{48}$/',$image)&&is_file(ROOT.'/storage/uploads/'.$image))unlink(ROOT.'/storage/uploads/'.$image);}}
     foreach($sessions as $sid){$file=rtrim(session_save_path(),'\\/').DIRECTORY_SEPARATOR.'sess_'.$sid;if(is_file($file))unlink($file);}
     // Only the random, explicitly created test database may be dropped.

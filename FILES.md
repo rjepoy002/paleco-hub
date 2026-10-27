@@ -1,65 +1,125 @@
-﻿# Created and modified files
+﻿# PALECO Hub file inventory
 
-All application files below were created for this standalone project. DocRoute files were read only; the authorized logo was copied into this project.
+The existing Phase 1 application was extended in place. DocRoute v2 was not modified.
 
-## Source and public assets
+## Phase 2 created files
 
-- `composer.lock`
-- `composer.json`
-- `tests/run.php`
-- `tests/router.php`
-- `tests/browser.cjs`
-- `tests/oauth-csp.cjs` — real-browser Google OAuth CSP redirect regression check.
-- `README.md`
-- `bin/setup.php`
-- `bin/approve-user.php`
-- `public/sw.js`
-- `public/manifest.json`
-- `.gitignore`
-- `.env.example`
-- `.htaccess`
-- `index.php`
-- `app/bootstrap.php`
-- `public/assets/paleco-logo.png`
-- `public/assets/icon-512.png`
-- `public/assets/icon-192.png`
-- `public/assets/bootstrap.min.css`
-- `public/assets/app.js`
-- `public/assets/app.css`
-- `database/schema.sql`
-- `app/Views/announcement.php`
-- `app/Views/wordpress.php`
-- `app/Views/users.php`
-- `app/Views/security.php`
-- `app/Views/login.php`
-- `app/Views/layout.php`
-- `app/Views/history.php`
-- `app/Views/error.php`
-- `app/Views/dashboard.php`
-- `app/Services/GoogleProvider.php`
-- `app/Services/Auth.php`
+- `app/Services/AnnouncementLock.php`
+- `app/Services/CurlWordPressTransport.php`
+- `app/Services/Drafts.php`
+- `app/Services/Migrations.php`
+- `app/Services/Publisher.php`
+- `app/Services/Uploads.php`
+- `app/Services/WordPressClient.php`
+- `app/Services/WordPressFailure.php`
+- `app/Services/WordPressTransport.php`
+- `app/Views/review.php`
+- `bin/migrate.php`
+- `database/migrations/002_wordpress_publishing.php`
+- `docs/phase-2.md`
+- `tests/FakeWordPressTransport.php`
+- `tests/publishing.php`
+- `tests/publishing-browser.cjs`
+
+## Phase 2 modified files
+
+- `.gitignore` - allow the existing base schema to be versioned while keeping private backups ignored.
+- `app/Controllers/HubController.php`
 - `app/Services/Announcement.php`
-- `app/Services/RecognitionEngine.php`
-- `app/Services/UnconfiguredRecognition.php`
 - `app/Services/WordPress.php`
+- `app/Views/announcement.php`
+- `app/Views/dashboard.php`
+- `app/Views/history.php`
+- `app/Views/layout.php`
+- `app/Views/wordpress.php`
+- `bin/setup.php`
+- `public/assets/app.css`
+- `public/assets/app.js`
+- `public/sw.js`
+- `tests/browser.cjs`
+- `tests/router.php`
+- `tests/run.php`
+- `README.md`
+- `docs/phase-2-checkpoint.md`
+- `FILES.md`
+
+The existing `database/schema.sql` is unchanged. It is now unignored so fresh installations and tests can reproduce the base schema.
+
+## All source files
+
+- `.env.example`
+- `.gitignore`
+- `.htaccess`
+- `app/bootstrap.php`
 - `app/Controllers/HubController.php`
 - `app/Models/DB.php`
+- `app/Services/Announcement.php`
+- `app/Services/AnnouncementLock.php`
+- `app/Services/Auth.php`
+- `app/Services/CurlWordPressTransport.php`
+- `app/Services/Drafts.php`
+- `app/Services/GoogleProvider.php`
+- `app/Services/Migrations.php`
+- `app/Services/Publisher.php`
+- `app/Services/RecognitionEngine.php`
+- `app/Services/UnconfiguredRecognition.php`
+- `app/Services/Uploads.php`
+- `app/Services/WordPress.php`
+- `app/Services/WordPressClient.php`
+- `app/Services/WordPressFailure.php`
+- `app/Services/WordPressTransport.php`
+- `app/Views/announcement.php`
+- `app/Views/dashboard.php`
+- `app/Views/error.php`
+- `app/Views/history.php`
+- `app/Views/layout.php`
+- `app/Views/login.php`
+- `app/Views/review.php`
+- `app/Views/security.php`
+- `app/Views/users.php`
+- `app/Views/wordpress.php`
+- `bin/approve-user.php`
+- `bin/migrate.php`
+- `bin/setup.php`
+- `composer.json`
+- `composer.lock`
+- `database/migrations/002_wordpress_publishing.php`
+- `database/schema.sql`
+- `docs/phase-2.md`
+- `docs/phase-2-checkpoint.md`
+- `index.php`
+- `public/assets/app.css`
+- `public/assets/app.js`
+- `public/assets/bootstrap.min.css`
+- `public/assets/icon-192.png`
+- `public/assets/icon-512.png`
+- `public/assets/paleco-logo.png`
+- `public/manifest.json`
+- `public/sw.js`
+- `README.md`
+- `tests/browser.cjs`
+- `tests/FakeWordPressTransport.php`
+- `tests/oauth-csp.cjs`
+- `tests/publishing.php`
+- `tests/publishing-browser.cjs`
+- `tests/router.php`
+- `tests/run.php`
 
-## Generated local state
+## Private/generated local state
 
-- `.env` — private local configuration with a new encryption key; excluded from version control.
-- `vendor/` — Composer dependencies from the pinned lockfile; excluded from version control.
-- `storage/qa/` — optional local Playwright QA dependency; excluded from version control.
-- `storage/screenshots/login-desktop.png`
-- `storage/screenshots/login-mobile.png`
-- `storage/screenshots/dashboard-desktop.png`
-- `storage/screenshots/dashboard-mobile.png`
-- `storage/test-server.log` — isolated integration server log.
-- `storage/uploads/` — protected runtime poster storage.
+- `.env` - preserved; never included in version control or output.
+- `vendor/` - existing Composer dependencies.
+- `storage/uploads/` - private runtime posters.
+- `storage/private/pre-phase2-20261027-060716.json` - protected pre-migration snapshot; contains private data and encrypted credentials.
+- `storage/qa/` - optional local Playwright tooling.
+- `storage/test-server.log` - isolated QA server log.
+- `storage/screenshots/phase2-review-desktop.png` and `phase2-review-mobile.png` - fictitious test data.
+- Other existing login/dashboard screenshots remain under `storage/screenshots/`.
 
-## Database changes
+## Database
 
-- Created independent `paleco_hub` database and tables in `database/schema.sql`.
-- Approved the user-supplied Gmail identity as Administrator.
-- Automated test databases use random names and are removed after each run.
-- No DocRoute database changes or live WordPress writes.
+- Applied `002_wordpress_publishing` non-destructively to the independent Hub database.
+- Preserved users, drafts, mappings, application settings and encrypted credentials.
+- Added `schema_migrations`, `publishing_attempts` and announcement publishing metadata.
+- No live WordPress records were created or changed by implementation/QA.
+- Temporary test databases, posters, fixtures and sessions are removed after tests.

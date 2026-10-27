@@ -1,5 +1,7 @@
 # Phase 2 restart checkpoint
 
+**Update, October 27, 2026:** Phase 2 was resumed and implemented. The installed database was backed up and incrementally migrated with existing values preserved. The full mocked/browser suite passed 119 checks. See [phase-2.md](phase-2.md) and the updated README for the implemented workflow, verification and remaining limitations. No live WordPress requests or test publications were performed. The inspection and proposed sequence below are retained as historical notes.
+
 Saved Friday, October 23, 2026 (Asia/Manila). The user requested a stop by 5:00 PM and continuation Monday, October 26. Resume only when the user returns and requests continuation. Phase 2 implementation is NOT complete.
 
 ## Request and boundaries

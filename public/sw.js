@@ -1,5 +1,5 @@
 'use strict';
-const CACHE='paleco-hub-static-v1';
+const CACHE='paleco-hub-static-v2';
 const BASE=new URL(self.registration.scope).pathname.replace(/\/$/,'');
 const STATIC=['/assets/bootstrap.min.css','/assets/app.css','/assets/app.js','/assets/paleco-logo.png','/assets/icon-192.png','/assets/icon-512.png'].map(p=>BASE+p);
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(STATIC))));

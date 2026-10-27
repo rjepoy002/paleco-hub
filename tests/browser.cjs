@@ -27,8 +27,8 @@ async function main(){
  await page.goto(base+'/scheduled');await page.locator('#poster').setInputFiles(path.join(__dirname,'../public/assets/paleco-logo.png'));
  await page.locator('#poster-preview').waitFor({state:'visible'});assert(await page.locator('#title').inputValue()==='','poster selection does not invent a date');
  await page.locator('#date').fill('2026-10-25');await page.locator('#date').dispatchEvent('change');
- assert(await page.locator('#title').inputValue()==='Scheduled Power Interruption [October 25, 2026]','scheduled title uses the confirmed date');
- await page.locator('[name=date_confirmed]').check();await page.getByRole('button',{name:'Save draft',exact:true}).click();await page.waitForURL('**/history');assert(await page.getByText('Scheduled Power Interruption [October 25, 2026]',{exact:true}).isVisible(),'image draft saved');
+ assert(await page.locator('#title').inputValue()==='Scheduled Power Interruption October 25, 2026','scheduled title uses the confirmed date');
+ await page.locator('[name=date_confirmed]').check();await page.getByRole('button',{name:'Save draft',exact:true}).click();await page.waitForURL('**/history');assert(await page.getByText('Scheduled Power Interruption October 25, 2026',{exact:true}).isVisible(),'image draft saved');
  await page.getByText('View poster',{exact:true}).click();const poster=page.locator('.history-poster');await poster.waitFor({state:'visible'});await poster.evaluate(img=>img.decode());assert(await poster.evaluate(img=>img.naturalWidth>0),'private poster loads for authenticated user');
  for(const viewport of [{width:390,height:844},{width:360,height:800},{width:768,height:1024}]){
    await page.setViewportSize(viewport);await page.goto(base+'/dashboard');

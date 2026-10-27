@@ -8,4 +8,8 @@ if (str_starts_with($path,$prefix.'/assets/')) {
     $name=basename($path); $file=dirname(__DIR__).'/public/assets/'.$name;
     if (is_file($file)) { $extension=pathinfo($file,PATHINFO_EXTENSION); header('Content-Type: '.(['css'=>'text/css','js'=>'application/javascript','png'=>'image/png'][$extension] ?? 'application/octet-stream')); readfile($file); return; }
 }
-require dirname(__DIR__).'/index.php';
+if(preg_match('/^paleco_hub_test_[a-f0-9]{12}$/',getenv('DB_DATABASE') ?: '')) {
+    require dirname(__DIR__).'/app/bootstrap.php';
+    require_once ROOT.'/tests/FakeWordPressTransport.php';
+    (new App\Controllers\HubController(new App\Services\Publisher(new FakeWordPressTransport(ROOT.'/storage/wp-fixture-'.env('DB_DATABASE').'.json'))))->run();
+} else { require dirname(__DIR__).'/index.php'; }

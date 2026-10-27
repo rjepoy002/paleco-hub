@@ -23,12 +23,6 @@ final class WordPress {
         if ($plain===false) throw new \RuntimeException('Stored credentials cannot be unlocked.'); return $plain;
     }
     public static function get(array $connection,string $path): array {
-        $base=rtrim($connection['rest_url'],'/'); [$host,$ips]=self::validateUrl($base);
-        $ch=curl_init($base.$path); $ip=$ips[0]; if (str_contains($ip,':')) $ip='['.$ip.']';
-        curl_setopt_array($ch,[CURLOPT_RETURNTRANSFER=>true,CURLOPT_FOLLOWLOCATION=>false,CURLOPT_PROTOCOLS=>CURLPROTO_HTTPS,CURLOPT_CONNECTTIMEOUT=>8,CURLOPT_TIMEOUT=>15,CURLOPT_RESOLVE=>[$host.':443:'.$ip],CURLOPT_HTTPAUTH=>CURLAUTH_BASIC,CURLOPT_USERPWD=>$connection['username'].':'.self::decrypt($connection['password_encrypted']),CURLOPT_HTTPHEADER=>['Accept: application/json'],CURLOPT_SSL_VERIFYPEER=>true,CURLOPT_SSL_VERIFYHOST=>2]);
-        $size=0; $body=''; curl_setopt($ch,CURLOPT_WRITEFUNCTION,function($ch,$chunk) use (&$size,&$body) { $size+=strlen($chunk); if ($size>2*1024*1024) return 0; $body.=$chunk; return strlen($chunk); });
-        $ok=curl_exec($ch); $status=curl_getinfo($ch,CURLINFO_HTTP_CODE); curl_close($ch);
-        if ($ok===false || $status!==200) throw new \RuntimeException('WordPress connection failed. Check the HTTPS destination, credentials, and REST API access.');
-        $json=json_decode($body,true); if (!is_array($json)) throw new \RuntimeException('WordPress returned an invalid response.'); return $json;
+        return (new WordPressClient($connection))->request('GET',$path);
     }
 }

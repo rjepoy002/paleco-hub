@@ -10,3 +10,5 @@ $pdo=new PDO('mysql:host='.env('DB_HOST','127.0.0.1').';port='.env('DB_PORT','33
 $pdo->exec('CREATE DATABASE IF NOT EXISTS `'.$database.'` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci'); $pdo->exec('USE `'.$database.'`');
 foreach (explode(';',file_get_contents(ROOT.'/database/schema.sql')) as $sql) if (trim($sql)!=='') $pdo->exec($sql);
 echo "Database schema installed. No user accounts have been created.\n";
+App\Services\Migrations::run();
+echo "Incremental migrations applied.\n";

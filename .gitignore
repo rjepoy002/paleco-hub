@@ -17,6 +17,7 @@ auth.json
 
 # Local data and backups
 *.sql
+!/database/schema.sql
 *.sql.gz
 *.bak
 *.zip

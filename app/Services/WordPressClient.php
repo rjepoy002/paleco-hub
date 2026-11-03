@@ -58,6 +58,7 @@ final class WordPressClient {
         foreach (['title','content'] as $key) if (($result[$key]['raw'] ?? null)!==$payload[$key]) throw new WordPressFailure('WordPress changed the submitted title or content. Review the remote result before retrying.',true);
         $categories=$result['categories'] ?? []; if (!in_array($payload['categories'][0],$categories,true)) throw new WordPressFailure('WordPress did not retain the required category. Review the category mapping.',true);
         if (isset($payload['featured_media']) && ($result['featured_media'] ?? null)!==$payload['featured_media']) throw new WordPressFailure('WordPress did not retain the required featured poster. Reconcile before retrying.',true);
+        foreach($payload['tags'] ?? [] as $tag)if(!in_array($tag,$result['tags'] ?? [],true))throw new WordPressFailure('WordPress did not retain the required tags. Reconcile before retrying.',true);
         return ['id'=>$result['id'],'url'=>$this->safeLink($result['link'] ?? null),'status'=>$result['status']];
     }
 }

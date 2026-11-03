@@ -2,6 +2,14 @@
 
 The existing Phase 1 application was extended in place. DocRoute v2 was not modified.
 
+## Consolidated scheduled / dashboard update
+
+Created: `database/migrations/004_scheduled_ocr_reporting.php`, `app/Services/GoogleVisionTransport.php`, `app/Services/InterruptionDates.php`, `app/Services/PosterOcr.php`, `app/Services/Reporting.php`, `app/Services/VisionTransport.php`, `app/Services/YearTags.php`, `tests/FakeVisionTransport.php`, `tests/consolidated.php`, `tests/consolidated-browser.cjs`, `docs/consolidated-scheduled-dashboard.md`.
+
+Modified: `.env.example`, `.gitignore`, `composer.json`, `composer.lock`, `app/Controllers/HubController.php`, `app/Services/Announcement.php`, `app/Services/CurlWordPressTransport.php`, `app/Services/Drafts.php`, `app/Services/History.php`, `app/Services/PartialPublication.php` (reporting only), `app/Services/Publisher.php`, `app/Services/ScheduledDrafts.php`, `app/Services/ScheduledMedia.php`, `app/Services/WordPressClient.php`, `app/Views/dashboard.php`, `app/Views/history.php`, `app/Views/history-announcements.php`, `app/Views/scheduled.php`, `public/assets/history.js`, `public/assets/scheduled.js`, existing WordPress/browser test fixtures and test runner, `README.md`, `FILES.md`.
+
+Generated/ignored: Composer dependencies, test logs/screenshots and `storage/private/pre-consolidated-20261028-015006.json`. Public theme pages were read only for inspection and saved as ignored QA HTML under `storage/`. Original data, OAuth credentials, category mappings and remote post/media IDs were preserved. No real history reset, Vision call, WordPress write or push was invoked.
+
 ## Scheduled multi-poster / history-management update
 
 Created: `database/migrations/003_multi_posters_history.php`, `app/Services/Attachments.php`, `app/Services/ScheduledDrafts.php`, `app/Services/ScheduledMedia.php`, `app/Services/History.php`, `app/Views/scheduled.php`, `app/Views/history-announcements.php`, `app/Views/poster-images.php`, `public/assets/scheduled.js`, `public/assets/history.js`, `tests/multi-history.php`, `tests/multi-history-browser.cjs`, `docs/multi-posters-history.md`.

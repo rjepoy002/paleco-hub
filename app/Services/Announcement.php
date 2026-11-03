@@ -6,6 +6,14 @@ final class Announcement {
     }
     public static function titleDetails(string $text): array {
         if (!mb_check_encoding($text,'UTF-8')) throw new \RuntimeException('Use valid UTF-8 advisory text.');
+        // Source timestamp wins over other advisory headings. Never substitute the server clock.
+        if(preg_match('/^[\h\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{FE0F}\x{200D}]*PALECO\s+INFO\s+(\d{1,2}\/\d{1,2}\/(?:\d{4}|\d{2}))\s+(0?[1-9]|1[0-2]):([0-5]\d)\h*([ap]m)\b/imu',$text,$header,PREG_OFFSET_CAPTURE)){
+            [$month,$day,$year]=array_map('intval',explode('/',$header[1][0]));
+            if(checkdate($month,$day,$year<100?2000+$year:$year)){
+                $line=count(preg_split('/\R/u',substr($text,0,$header[0][1])))-1;
+                return ['title'=>'Power Service Advisory '.$header[1][0].' '.$header[2][0].':'.$header[3][0].' '.$header[4][0],'line'=>$line];
+            }
+        }
         $lines=preg_split('/\R/u',$text);
         foreach ($lines as $index=>$line) {
             // Keep the existing advisory patterns; ignore decorative emoji only for recognition.
@@ -18,9 +26,11 @@ final class Announcement {
         return ['title'=>'Partial Power Interruption Update — '.$summary,'line'=>null];
     }
     public static function publicationBody(string $text): string {
-        $detected=self::titleDetails($text); $lines=preg_split('/\R/u',$text);
-        if ($detected['line']!==null) { unset($lines[$detected['line']]); return ltrim(implode("\n",$lines),"\r\n"); }
         return str_replace(["\r\n","\r"],"\n",$text);
+    }
+    public static function wordpressText(string $text): string {
+        // Preserve existing entities; encode literal markup once, without adding HTML layout.
+        return htmlspecialchars(self::publicationBody($text),ENT_QUOTES|ENT_SUBSTITUTE|ENT_HTML5,'UTF-8',false);
     }
     public static function partialInput(array $input): array {
         foreach(['body','title'] as $field) if(isset($input[$field]) && !is_string($input[$field])) throw new \RuntimeException('Enter valid announcement text and title.');
@@ -30,13 +40,15 @@ final class Announcement {
         if(preg_match('/[\x00-\x08\x0E-\x1F\x7F]/u',$body.$title)) throw new \RuntimeException('Remove unsupported control characters from the advisory.');
         if (!self::hasText($title)) $title=self::title($body);
         if (!self::hasText($title) || mb_strlen($title)>255) throw new \RuntimeException('Enter a title up to 255 characters.');
-        if (!self::hasText(self::publicationBody($body))) throw new \RuntimeException('Add advisory details below the title before publishing.');
+        $lines=preg_split('/\R/u',$body); $detected=self::titleDetails($body);
+        if ($detected['line']!==null) unset($lines[$detected['line']]);
+        if (!self::hasText(implode("\n",$lines))) throw new \RuntimeException('Add advisory details below the title before publishing.');
         return ['body'=>$body,'title'=>$title];
     }
     private static function hasText(string $text): bool { return (bool)preg_match('/[^\s\p{Z}\x{200B}\x{FEFF}]/u',$text); }
     public static function dateTitle(string $date): string {
         $d=\DateTimeImmutable::createFromFormat('!Y-m-d',$date);
         if (!$d || $d->format('Y-m-d')!==$date) throw new \RuntimeException('Enter a valid interruption date.');
-        return 'Scheduled Power Interruption '.$d->format('F j, Y');
+        return 'Scheduled Power Interruption ['.$d->format('F j, Y').']';
     }
 }

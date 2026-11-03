@@ -6,6 +6,8 @@ Phase 2 adds editable local drafts, WordPress drafts, explicitly confirmed publi
 
 See [Phase 2 implementation and manual testing guide](docs/phase-2.md) for migration details, API endpoints, error recovery, coverage, and remaining limitations. [FILES.md](FILES.md) lists source files and the Phase 2 changes.
 
+Partial advisory publishing now preserves its full heading and plain-text line breaks without generated HTML wrappers or tracking comments, and assigns the POWER_ADVISORY category and tag. See the [plain-text publishing guide](docs/partial-plain-text-publishing.md) for changed files, WordPress filter configuration, explicit legacy repair and mobile-client limitations.
+
 ## Installed state
 
 - Local database migrated with `002_wordpress_publishing`; existing rows and original values were verified unchanged.
@@ -59,6 +61,8 @@ Chrome checks CSP on the form's redirect to Google. The retained policy permits 
 
 ## Daily workflow
 
+The latest [consolidated scheduled/dashboard update](docs/consolidated-scheduled-dashboard.md) adds optional Google Cloud Vision date recognition, bracketed generated titles, automatic WordPress year tags, theme-aware poster rendering, unified History, and **Since Last History Reset** statistics. The old scheduled-date confirmation checkboxes and separate pending-work section are removed. Vision is not configured locally; manual date fallback remains active. Migration `004_scheduled_ocr_reporting` is installed; other deployments must run Composer installation and migrations.
+
 Scheduled interruptions now support ordered multiple posters, per-image previews/removal, Local Draft, WordPress Draft and explicitly confirmed publication. Publishing History has local-only Delete and Administrator Clear History with preserved drafts/synchronization state. See [multi-poster and history guide](docs/multi-posters-history.md) for migration `003_multi_posters_history`, limits, permissions and verification.
 
 **Partial Power Interruption Update now uses Publish and Cancel only.** Its title is detected automatically and remains editable. Publish opens a final confirmation and sends a public post only after confirmation; it creates no draft. Cancel confirms discarding changed content. Errors preserve the form for safe retry. See [partial publishing form](docs/partial-publishing-form.md). The scheduled-poster workflow and backend/history draft functions below remain available.
@@ -80,7 +84,7 @@ composer validate --strict
 composer audit --no-interaction
 ```
 
-The complete browser run currently passes **197 checks**, including the original auth/session/draft checks, mocked publishing tests, simplified partial-form checks, multi-poster uploads and local history management. Tests create a random isolated `paleco_hub_test_*` database and remove it afterward. The fake WordPress transport has no HTTP implementation and accepts only `https://wordpress.example.invalid`; no real WordPress credentials or live APIs are used. Test accounts are isolated from installed Hub users.
+The complete browser run currently passes **269 checks**, including auth/session/drafts, mocked publishing and OCR, partial plain-text publishing, multi-poster uploads, tags, unified history and persistent dashboard resets. Tests create a random isolated `paleco_hub_test_*` database and remove it afterward. The fake WordPress transport has no HTTP implementation and accepts only `https://wordpress.example.invalid`; no real WordPress credentials or live APIs are used. Test accounts are isolated from installed Hub users.
 
 Optional browser QA uses installed Chrome and Playwright under ignored `storage/qa/`:
 

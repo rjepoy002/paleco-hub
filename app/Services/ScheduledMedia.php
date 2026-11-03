@@ -17,7 +17,8 @@ final class ScheduledMedia {
                 $item['wordpress_media_id']=$media['id'];$item['wordpress_media_url']=$media['url'];
             }
             $url=$client->safeLink($item['wordpress_media_url']);$mediaId=(int)$item['wordpress_media_id'];$ids[]=$mediaId;
-            $figures[]='<figure class="wp-block-image"><img src="'.e($url).'" alt="'.e($a['title']).'" class="wp-image-'.$mediaId.'" /></figure>';
+            // The configured PALECO single-post template displays featured_media separately.
+            if(count($ids)>1 || env('SCHEDULED_FEATURED_DISPLAY','theme')==='content')$figures[]='<figure class="wp-block-image"><img src="'.e($url).'" alt="'.e($a['title']).'" class="wp-image-'.$mediaId.'" /></figure>';
         }
         return ['featured_media'=>$ids[0],'content'=>implode("\n",$figures)];
     }

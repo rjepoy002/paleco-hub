@@ -2,8 +2,8 @@
 namespace App\Services;
 use App\Models\DB;
 final class Drafts {
-    public static function save(string $type,int $userId,array $input,?array $file): int {
-        if($type==='scheduled')return ScheduledDrafts::save($userId,$input,$file);
+    public static function save(string $type,int $userId,array $input,?array $file,?PosterOcr $ocr=null): int {
+        if($type==='scheduled')return ScheduledDrafts::save($userId,$input,$file,$ocr);
         Publisher::authorize($userId);
         if (!in_array($type,['partial','scheduled'],true)) throw new \RuntimeException('Invalid announcement module.');
         $id=(int)($input['id'] ?? 0);
@@ -38,7 +38,7 @@ final class Drafts {
                 if ($old) DB::query('UPDATE announcements SET title=?,body=?,image_path=?,image_mime=?,interruption_date=?,revision=revision+1,updated_at=UTC_TIMESTAMP() WHERE id=?',[$title,$body,$image,$mime,$date,$id]);
                 else DB::query('INSERT INTO announcements (user_id,type,title,body,image_path,image_mime,interruption_date) VALUES (?,?,?,?,?,?,?)',[$userId,$type,$title,$body,$image,$mime,$date]);
                 $savedId=$id ?: (int)$db->lastInsertId();
-                DB::audit($userId,$old?'announcement.draft_edited':'announcement.draft_saved'); $db->commit();
+                Reporting::touch($savedId);DB::audit($userId,$old?'announcement.draft_edited':'announcement.draft_saved'); $db->commit();
             } catch (\Throwable $ex) { $db->rollBack(); if ($newImage) unlink(Uploads::path($newImage)); throw $ex; }
             if ($newImage && $old && $old['image_path'] && is_file(Uploads::path($old['image_path']))) unlink(Uploads::path($old['image_path']));
             return $savedId;

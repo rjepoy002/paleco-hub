@@ -11,7 +11,16 @@ check(Announcement::title($advisory)==='⚡️ Power Service Advisory Final Upda
 check(str_contains(Announcement::title('Supply restored in Bárangay Maligaya.'),'Bárangay Maligaya'),'fallback title derives from advisory content');
 check(Announcement::title('')==='','empty advisory has no invented title');
 check(mb_strlen(Announcement::title(str_repeat('a',100000)))<=255,'long Facebook text generates bounded title');
-check(!str_contains(Announcement::publicationBody($advisory),'Power Service Advisory'),'detected title is removed from publication body once');
+foreach([
+    ['PALECO INFO 10/30/26 1:58 PM','Power Service Advisory 10/30/26 1:58 PM'],
+    ["  paleco\t info  10/30/26\t01:58\tpm",'Power Service Advisory 10/30/26 01:58 pm'],
+    ["⚡ PALECO INFO\n 1/2/2024   12:05 Am",'Power Service Advisory 1/2/2024 12:05 Am'],
+    ['PALECO INFO 10/30/26 9:00AM','Power Service Advisory 10/30/26 9:00 AM'],
+] as [$header,$expectedTitle])check(Announcement::title($header."\n\nPower Service Advisory Existing Heading\nDetails.")===$expectedTitle,'PALECO INFO uses original timestamp: '.$expectedTitle);
+check(Announcement::title("PALECO INFO\nPower Service Advisory Existing\nDetails.")==='Power Service Advisory Existing','missing header timestamp uses existing detected heading');
+check(Announcement::title("PALECO INFO 2/30/26 13:90 PM\nPower Service Advisory Existing\nDetails.")==='Power Service Advisory Existing','invalid timestamp falls back instead of inventing a date or time');
+check(str_contains(Announcement::title('PALECO INFO without a timestamp'),'PALECO INFO without a timestamp'),'missing timestamp retains existing content-based fallback');
+check(substr_count(Announcement::publicationBody($advisory),'Power Service Advisory')===1,'detected title remains in publication body once');
 $before=(int)DB::query('SELECT COUNT(*) FROM announcements')->fetchColumn();$calls=count($mock->state['calls']);
 $form=partialForm($advisory);check((int)DB::query('SELECT COUNT(*) FROM announcements')->fetchColumn()===$before&&count($mock->state['calls'])===$calls,'confirmation preparation creates no local or remote draft');
 $unconfirmed=$form;$unconfirmed['confirmed']='0';rejects(fn()=>PartialPublication::publish($publisherService,2,$unconfirmed),'unconfirmed direct form cannot publish');
@@ -19,7 +28,7 @@ check((int)DB::query('SELECT COUNT(*) FROM announcements')->fetchColumn()===$bef
 $changed=$form;$changed['body'].='Changed after confirmation';rejects(fn()=>PartialPublication::publish($publisherService,2,$changed),'changed modal content invalidates confirmation signature');
 $a=PartialPublication::publish($publisherService,2,$form);$post=$mock->state['posts'][$a['wordpress_post_id']];
 check($a['status']==='published'&&$post['status']==='publish'&&$post['categories']===[58],'direct partial form publishes to POWER_ADVISORY without draft status');
-check(!str_contains($post['content']['raw'],'Power Service Advisory'),'WordPress body does not duplicate its detected title');
+check(substr_count($post['content']['raw'],'Power Service Advisory')===1,'WordPress body preserves its original title once');
 $count=writeCount();$again=PartialPublication::publish($publisherService,2,$form);check($again['id']===$a['id']&&writeCount()===$count,'duplicate confirmed form reuses operation/post instead of creating duplicate');
 $manual=partialForm($advisory,'Publisher override');$a=PartialPublication::publish($publisherService,2,$manual);check($a['title']==='Publisher override','server retains manually edited title');
 rejects(fn()=>partialForm(''),'empty text rejected before local persistence');rejects(fn()=>partialForm('Power Service Advisory'),'title-only advisory rejected with actionable validation');rejects(fn()=>partialForm(str_repeat('x',100001)),'oversize advisory rejected');

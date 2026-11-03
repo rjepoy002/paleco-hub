@@ -1,0 +1,55 @@
+<?php
+use App\Services\Publisher;
+// Uses only the existing in-memory transport and isolated test database.
+$infoBody="PALECO INFO 10/30/26 1:58 PM\r\n\r\nPower Service Advisory Original Heading\r\n\r\nSupply restored in Maligaya.";
+$infoForm=partialForm($infoBody);$infoRecord=App\Services\PartialPublication::publish($publisherService,2,$infoForm);$infoPost=$mock->state['posts'][$infoRecord['wordpress_post_id']];
+check($infoPost['title']['raw']==='Power Service Advisory 10/30/26 1:58 PM','direct WordPress publication uses the source header timestamp as title');
+check($infoPost['content']['raw']===str_replace("\r\n","\n",$infoBody) && !str_contains($infoPost['content']['raw'],'<!--') && !str_contains($infoPost['content']['raw'],'<p>'),'timestamp title leaves the complete original plain-text body unchanged');
+$infoTag=App\Services\AdvisoryTags::resolve(new App\Services\WordPressClient(Publisher::connection(),$mock));
+check($infoPost['categories']===[58] && count(array_keys($infoPost['tags'],$infoTag,true))===1,'timestamp publication retains POWER_ADVISORY category and a single tag');
+$infoDraft=App\Services\Drafts::save('partial',2,['body'=>$infoBody,'title'=>''],null);$draftRecord=sendMock($infoDraft,'draft');
+check($mock->state['posts'][$draftRecord['wordpress_post_id']]['title']['raw']==='Power Service Advisory 10/30/26 1:58 PM','WordPress draft uses the same generated timestamp title');
+$customInfo=partialForm($infoBody,'Publisher chosen title');$customRecord=App\Services\PartialPublication::publish($publisherService,2,$customInfo);$customPost=$mock->state['posts'][$customRecord['wordpress_post_id']];
+check($customPost['title']['raw']==='Publisher chosen title' && $customPost['content']['raw']===str_replace("\r\n","\n",$infoBody),'manual title override reaches WordPress without changing original header or line breaks');
+$text="Power Service Advisory Original Heading\r\n\r\nArea A &amp; B <script>alert('x')</script>\r\n\r\nUnicode: Bárangay ⚡\r\nLast line.";
+$expected="Power Service Advisory Original Heading\n\nArea A &amp; B &lt;script&gt;alert(&apos;x&apos;)&lt;/script&gt;\n\nUnicode: Bárangay ⚡\nLast line.";
+check(App\Services\Announcement::wordpressText($text)===$expected,'plain advisory preserves title, Unicode, blank lines and entities while escaping literal HTML once');
+check(App\Services\Announcement::wordpressText($expected)===$expected,'plain text encoding is idempotent and never double-encodes entities');
+$plainId=App\Services\Drafts::save('partial',2,['body'=>$text,'title'=>'Manually overridden post title'],null);
+$firstPlain=sendMock($plainId,'draft');$plainPostId=(int)$firstPlain['wordpress_post_id'];$post=$mock->state['posts'][$plainPostId];
+check($post['content']['raw']===$expected && $post['title']['raw']==='Manually overridden post title','WordPress draft keeps original body heading with a manual post title');
+check(!preg_match('/<(?:p|br)\b|<!--/i',$post['content']['raw']),'partial raw content contains no paragraph/break tags or tracking comments');
+$tagId=App\Services\AdvisoryTags::resolve(new App\Services\WordPressClient(Publisher::connection(),$mock));
+check($post['categories']===[58] && in_array($tagId,$post['tags'],true) && $mock->state['tags'][$tagId]['name']==='POWER_ADVISORY','draft retains POWER_ADVISORY category and exact named tag');
+$mock->state['posts'][$plainPostId]['tags'][]=9876;
+$tagsBefore=count($mock->state['tags']);$beforeWrites=writeCount();$published=sendMock($plainId);$post=$mock->state['posts'][$plainPostId];
+check((int)$published['wordpress_post_id']===$plainPostId && writeCount()===$beforeWrites && $post['content']['raw']===$expected,'Publish updates the mapped comment-free draft without another post creation');
+check(count($mock->state['tags'])===$tagsBefore && in_array(9876,$post['tags'],true) && in_array($tagId,$post['tags'],true),'Publish reuses advisory tag and preserves manually assigned tags');
+$beforeCalls=count($mock->state['calls']);sendMock($plainId);check(count($mock->state['calls'])===$beforeCalls,'comment-free publication replay remains idempotent');
+// Exercise creation, accepted timeout recovery and rejection independently of cached tag state.
+$savedTags=$mock->state['tags'];$mock->state['tags']=[];
+$mock->state['mode']='tag-timeout';$resolved=App\Services\AdvisoryTags::resolve(new App\Services\WordPressClient(Publisher::connection(),$mock));
+check(count($mock->state['tags'])===1 && $mock->state['tags'][$resolved]['name']==='POWER_ADVISORY','advisory tag creation timeout reconciles instead of duplicating the term');
+$mock->state['tags']=[];$mock->state['mode']='tag-rejected';$blocked=localDraft();$beforeWrites=writeCount();
+rejects(fn()=>sendMock($blocked),'advisory tag permission failure is actionable');check(writeCount()===$beforeWrites,'missing advisory tag permission prevents uncategorized/untagged post creation');
+$mock->state['tags']=$savedTags;$mock->state['mode']='ok';
+$filtered=localDraft();$mock->state['mode']='content-filter';$beforeWrites=writeCount();
+rejects(fn()=>sendMock($filtered),'WordPress save filter markup mutation is rejected rather than reported as success');
+$mock->state['mode']='ok';rejects(fn()=>sendMock($filtered),'mutated saved content requires inspection before retry');
+check(writeCount()===$beforeWrites+1 && Publisher::find($filtered)['uncertain_stage']==='post','filter failure preserves uncertain identity and prevents duplicate creation');
+// Optional legacy repair is a deliberate edit of the same mapped ID; never a background migration.
+$legacy=localDraft();$legacyState=sendMock($legacy,'draft');$legacyPost=(int)$legacyState['wordpress_post_id'];
+$mock->state['posts'][$legacyPost]['content']['raw']='<p>Legacy details</p>\n<!-- paleco-hub:'.$legacyState['remote_key'].' -->';
+$oldWrites=writeCount();$oldRevision=(int)$legacyState['revision'];
+App\Services\Drafts::save('partial',2,['id'=>$legacy,'revision'=>$oldRevision,'body'=>$legacyState['body'],'title'=>$legacyState['title']],null);sendMock($legacy,'draft');
+check(writeCount()===$oldWrites && !str_contains($mock->state['posts'][$legacyPost]['content']['raw'],'<!--') && str_starts_with($mock->state['posts'][$legacyPost]['content']['raw'],'Power Service Advisory'),'explicit legacy revision repair replaces old markup on the same mapped post');
+$harness=proc_open([PHP_BINARY,ROOT.'/tests/wordpress-plain-plugin.php'],[0=>STDIN,1=>STDOUT,2=>STDERR],$harnessPipes,ROOT);
+check(proc_close($harness)===0,'optional WordPress storage plugin preserves escaped raw text without touching scheduled writes');
+$repairEnv=array_merge(getenv(),$_ENV,['DB_DATABASE'=>env('DB_DATABASE')]);
+$beforeRepair=Publisher::find($plainId);
+$preview=proc_open([PHP_BINARY,ROOT.'/bin/repair-partial.php','--id='.$plainId,'--user=2'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$repairPipes,ROOT,$repairEnv);
+$previewText=stream_get_contents($repairPipes[1]);$previewError=stream_get_contents($repairPipes[2]);foreach($repairPipes as $pipe)fclose($pipe);
+check(proc_close($preview)===0 && str_contains($previewText,'Preview only.') && Publisher::find($plainId)['revision']===$beforeRepair['revision'],'optional repair defaults to preview without changing the local revision or remote post');
+$preview=proc_open([PHP_BINARY,ROOT.'/bin/repair-partial.php','--id='.$plainId,'--user=2','--apply'],[0=>['pipe','r'],1=>['pipe','w'],2=>['pipe','w']],$repairPipes,ROOT,$repairEnv);
+stream_get_contents($repairPipes[1]);$previewError=stream_get_contents($repairPipes[2]);foreach($repairPipes as $pipe)fclose($pipe);
+check(proc_close($preview)!==0 && str_contains($previewError,'--confirm-public-update') && Publisher::find($plainId)['revision']===$beforeRepair['revision'],'public repair requires additional explicit confirmation before any edit or live write');

@@ -10,6 +10,9 @@
 *.pem
 *.key
 auth.json
+*service-account*.json
+google-credentials*.json
+/secrets/
 
 # Dependencies
 /vendor/

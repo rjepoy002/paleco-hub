@@ -4,9 +4,10 @@ use App\Models\DB;
 final class History {
     public static function snapshot(bool $lock=false): array {
         $suffix=$lock?' FOR UPDATE':'';
-        $ann=array_map('intval',DB::query('SELECT id FROM announcements WHERE history_hidden_at IS NULL ORDER BY id'.$suffix)->fetchAll(\PDO::FETCH_COLUMN));
+        $versions=DB::query('SELECT id,revision,report_activity_at FROM announcements WHERE history_hidden_at IS NULL ORDER BY id'.$suffix)->fetchAll();
+        $ann=array_map('intval',array_column($versions,'id'));
         $events=array_map('intval',DB::query('SELECT id FROM publishing_history WHERE deleted_at IS NULL ORDER BY id'.$suffix)->fetchAll(\PDO::FETCH_COLUMN));
-        return ['announcements'=>$ann,'events'=>$events,'count'=>count($ann)+count($events),'token'=>hash_hmac('sha256',json_encode([$ann,$events]),env('APP_KEY'))];
+        return ['announcements'=>$ann,'events'=>$events,'count'=>count($ann)+count($events),'token'=>hash_hmac('sha256',json_encode([$versions,$events,Reporting::period()['epoch']]),env('APP_KEY'))];
     }
     public static function canDelete(array $user,int $owner): bool { return (int)$user['role_id']===1 || ((int)$user['role_id']===2 && (int)$user['id']===$owner); }
     public static function remove(int $userId,string $kind,int $id,bool $confirmed): int {
@@ -33,6 +34,7 @@ final class History {
             if(!hash_equals($snapshot['token'],$token))throw new \RuntimeException('The history count changed. Refresh and confirm the current records before clearing.');
             DB::query('UPDATE announcements SET history_hidden_at=UTC_TIMESTAMP(),history_hidden_by=? WHERE history_hidden_at IS NULL',[$userId]);
             DB::query('UPDATE publishing_history SET deleted_at=UTC_TIMESTAMP(),deleted_by=? WHERE deleted_at IS NULL',[$userId]);
+            Reporting::reset();
             DB::audit($userId,'history.cleared.'.$snapshot['count']);$db->commit();return $snapshot['count'];
         }catch(\Throwable $ex){$db->rollBack();throw $ex;}
     }

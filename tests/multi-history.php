@@ -21,8 +21,11 @@ try{
     check(count(json_decode(file_get_contents($fixture),true)['calls'])===$callsBefore,'multi-image local drafts make no WordPress calls');
     $recognizer=new class implements App\Services\RecognitionEngine { public function dates(string $path): array{return ['2026-10-30','2026-10-31'];} };
     $dateInput=['id'=>$savedIds[1],'revision'=>1,'date'=>'2026-10-30','date_confirmed'=>'1','title'=>'Multi upload 1'];
-    rejects(fn()=>App\Services\ScheduledDrafts::save(1,$dateInput,null,$recognizer),'conflicting recognized poster dates require extra confirmation');
-    App\Services\ScheduledDrafts::save(1,array_merge($dateInput,['date_conflict_confirmed'=>'1']),null,$recognizer);check(Publisher::find($savedIds[1])['interruption_date']==='2026-10-30','reviewed conflict keeps the explicitly confirmed interruption date');
+    App\Services\ScheduledDrafts::save(1,$dateInput,null,$recognizer);check(Attachments::all($savedIds[1])[0]['ocr_status']==='conflict','conflicting OCR is retained on a local draft for correction');
+    rejects(fn()=>sendMock($savedIds[1]),'conflicting poster dates block WordPress submission without checkbox override');
+    $dateInput['revision']=Publisher::find($savedIds[1])['revision'];
+    $matching=new class implements App\Services\RecognitionEngine {public function dates(string $path):array{return ['2026-10-30'];}};
+    App\Services\ScheduledDrafts::save(1,$dateInput,null,$matching);check(Publisher::find($savedIds[1])['interruption_date']==='2026-10-30','consistent recognized date is saved without confirmation checkboxes');
     $invalid=ROOT.'/storage/invalid-upload.png';file_put_contents($invalid,'<?php malicious executable ?>');$testFiles[]=$invalid;
     $before=(int)DB::query('SELECT COUNT(*) FROM announcements')->fetchColumn();uploadPosters([$testFiles[0],$invalid],'Invalid batch');check((int)DB::query('SELECT COUNT(*) FROM announcements')->fetchColumn()===$before,'invalid MIME/signature rejects whole upload batch');
     $large=ROOT.'/storage/oversized-upload.png';$largeHandle=fopen($large,'wb');fwrite($largeHandle,file_get_contents($testFiles[0]));ftruncate($largeHandle,8*1024*1024+1);fclose($largeHandle);$testFiles[]=$large;
@@ -37,14 +40,14 @@ try{
     check($remoteDraft['status']==='wordpress_draft'&&count(Attachments::all((int)$remoteDraft['id']))===2,'Save as WordPress Draft uploads two posters without publishing');
     $mock->state=json_decode(file_get_contents($fixture),true);$draftPostId=(int)$remoteDraft['wordpress_post_id'];$a=sendMock((int)$remoteDraft['id']);$post=$mock->state['posts'][$draftPostId];$items=Attachments::all((int)$a['id']);
     check((int)$a['wordpress_post_id']===$draftPostId&&$post['status']==='publish','multi-poster WordPress draft publishes by updating same post');
-    check(substr_count($post['content']['raw'],'<img')===2&&$post['featured_media']===(int)$items[0]['wordpress_media_id'],'all posters included and first is featured');
-    $positions=array_map(fn($p)=>strpos($post['content']['raw'],$p['wordpress_media_url']),$items);check($positions[0]<$positions[1],'WordPress image content preserves selected order');
+    check(substr_count($post['content']['raw'],'<img')===1&&$post['featured_media']===(int)$items[0]['wordpress_media_id'],'theme renders first poster and body includes remaining poster once');
+    $positions=array_map(fn($p)=>strpos($post['content']['raw'],$p['wordpress_media_url']),$items);check($positions[0]===false&&$positions[1]!==false,'featured first poster omitted from ordered body images');
     check(count(array_filter($items,fn($p)=>($mock->state['media'][$p['wordpress_media_id']]['post'] ?? null)===$draftPostId))===2,'all WordPress media items associated with same post');
     $multiId=$savedIds[5];$mock->state['reject_media_number']=($mock->state['media_upload_calls'] ?? 0)+2;$postCount=writeCount();rejects(fn()=>sendMock($multiId),'second media failure stops post publication');
     $partial=Attachments::all($multiId);check($partial[0]['wordpress_media_id']&&!$partial[1]['wordpress_media_id']&&writeCount()===$postCount,'first accepted media retained before later failure');
     $firstMedia=$partial[0]['wordpress_media_id'];$mediaCount=count($mock->state['media']);unset($mock->state['reject_media_number']);$a=sendMock($multiId);$items=Attachments::all($multiId);
     check($items[0]['wordpress_media_id']===$firstMedia&&count($mock->state['media'])===$mediaCount+4,'retry uploads only remaining posters');
-    check(substr_count($mock->state['posts'][$a['wordpress_post_id']]['content']['raw'],'<img')===5,'five-poster publication uses one post');
+    check(substr_count($mock->state['posts'][$a['wordpress_post_id']]['content']['raw'],'<img')===4,'five-poster publication uses one post');
     $uncertainId=$savedIds[2];$mock->state['timeout_media_number']=($mock->state['media_upload_calls'] ?? 0)+2;rejects(fn()=>sendMock($uncertainId),'accepted second poster timeout leaves durable pending attachment');$mediaCount=count($mock->state['media']);unset($mock->state['timeout_media_number']);$a=sendMock($uncertainId);
     check(count($mock->state['media'])===$mediaCount&&$a['status']==='published','multi-image timeout reconciles without duplicate media');
     $legacy=DB::query('SELECT * FROM announcements WHERE type=\'scheduled\' AND image_path IS NOT NULL ORDER BY id LIMIT 1')->fetch();check(count(Attachments::all((int)$legacy['id']))>=1,'legacy single-image announcement remains compatible');
@@ -67,7 +70,7 @@ try{
     [$pubSession,$pubToken]=seedSession(2,'History publisher');[$code]=request('/history/clear',$pubSession,['_token'=>$pubToken,'confirmed'=>'1','snapshot_token'=>History::snapshot()['token']]);check($code===403,'bulk history HTTP endpoint rejects Publisher');
     [$code]=request('/history/delete',$httpAdmin,['_token'=>'wrong','confirmed'=>'1','kind'=>'announcement','id'=>$savedIds[1]]);check($code===419,'history deletion endpoint enforces CSRF');
     [$code]=request('/history/delete?id='.$savedIds[1],$httpAdmin);check($code===404,'GET cannot delete history');
-    [$code,$html]=request('/history',$httpAdmin);check($code===200&&str_contains($html,'Active drafts and pending work')&&str_contains($html,'Multi upload 1'),'active draft stays accessible after clear');
+    [$code,$html]=request('/history',$httpAdmin);check($code===200&&!str_contains($html,'Active drafts and pending work')&&str_contains($html,'Multi upload 1'),'active draft stays accessible after clear');
     sendMock($savedIds[1]);check(History::snapshot()['count']>0,'new publishing activity reappears after history clear');
     file_put_contents($fixture,json_encode($mock->state,JSON_THROW_ON_ERROR));
     if(in_array('--browser',$argv,true)){$process=proc_open(['node',ROOT.'/tests/multi-history-browser.cjs','http://127.0.0.1:'.$port.'/paleco-hub',$httpAdmin,$pubSession],[0=>STDIN,1=>STDOUT,2=>STDERR],$pipes,ROOT);check(proc_close($process)===0,'multi-poster and history browser workflows');}

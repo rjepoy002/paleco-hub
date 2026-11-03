@@ -2,7 +2,7 @@
 namespace App\Services;
 final class CurlWordPressTransport implements WordPressTransport {
     public function request(array $connection,string $method,string $path,array $data=[],?array $file=null): array {
-        if (!in_array($method,['GET','POST'],true) || !preg_match('~^/(?:users/me|categories(?:/\d+)?|posts(?:/\d+)?|media(?:/\d+)?)(?:\?[^\r\n]*)?$~D',$path)) throw new WordPressFailure('Unsupported WordPress API request.');
+        if (!in_array($method,['GET','POST'],true) || !preg_match('~^/(?:users/me|categories(?:/\d+)?|tags(?:/\d+)?|posts(?:/\d+)?|media(?:/\d+)?)(?:\?[^\r\n]*)?$~D',$path)) throw new WordPressFailure('Unsupported WordPress API request.');
         $base=rtrim($connection['rest_url'],'/'); [$host,$ips]=WordPress::validateUrl($base);
         $password=WordPress::decrypt($connection['password_encrypted']);
         $ch=curl_init($base.$path); $ip=$ips[0]; if (str_contains($ip,':')) $ip='['.$ip.']';

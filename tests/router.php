@@ -11,5 +11,6 @@ if (str_starts_with($path,$prefix.'/assets/')) {
 if(preg_match('/^paleco_hub_test_[a-f0-9]{12}$/',getenv('DB_DATABASE') ?: '')) {
     require dirname(__DIR__).'/app/bootstrap.php';
     require_once ROOT.'/tests/FakeWordPressTransport.php';
-    (new App\Controllers\HubController(new App\Services\Publisher(new FakeWordPressTransport(ROOT.'/storage/wp-fixture-'.env('DB_DATABASE').'.json'))))->run();
+    require_once ROOT.'/tests/FakeVisionTransport.php';
+    (new App\Controllers\HubController(new App\Services\Publisher(new FakeWordPressTransport(ROOT.'/storage/wp-fixture-'.env('DB_DATABASE').'.json')),new App\Services\PosterOcr(new FakeVisionTransport(ROOT.'/storage/vision-fixture-'.env('DB_DATABASE').'.json'))))->run();
 } else { require dirname(__DIR__).'/index.php'; }

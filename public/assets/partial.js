@@ -4,20 +4,24 @@
  const body=form.elements.body,title=form.elements.title,publish=document.getElementById('partial-publish'),cancel=document.getElementById('partial-cancel');
  const dialog=document.getElementById('partial-confirm'),confirmButton=document.getElementById('partial-confirm-publish'),error=document.getElementById('partial-error'),status=document.getElementById('title-status');
  const initial=()=>JSON.stringify([body.value,title.value]);const original=initial();
- let manual=!!title.value.trim(),sequence=0,timer,request,prepared='',preparing=false,submitting=false,version=0,detectedSource='',detectedLine=null;
+ let manual=!!title.value.trim(),sequence=0,timer,request,prepared='',preparing=false,submitting=false,version=0;
  const setError=message=>{error.textContent=message;error.hidden=!message;};
  const invalidate=()=>{version++;prepared='';form.elements.confirmed.value='0';form.elements.confirmation_token.value='';if(dialog.open)dialog.close();};
- const render=()=>{document.getElementById('preview-title').textContent=title.value||'Your announcement title';let text=body.value;if(detectedSource===text&&detectedLine!==null){const lines=text.split(/\r\n|[\n\r\v\f\u0085\u2028\u2029]/u);lines.splice(detectedLine,1);text=lines.join('\n').replace(/^[\r\n]+/,'');}document.getElementById('preview-body').textContent=text;};
+ const render=()=>{document.getElementById('preview-title').textContent=title.value||'Your announcement title';document.getElementById('preview-body').textContent=body.value;};
  const post=async(path,data,signal)=>{const response=await fetch(`${document.body.dataset.base}${path}`,{method:'POST',body:data,credentials:'same-origin',signal,headers:{Accept:'application/json'}});let json;try{json=await response.json();}catch{throw Error('This session or form expired. Reload after copying your unsaved advisory, then try again.');}if(!response.ok)throw Error(json.error||'The request failed. Check your advisory and try again.');return json;};
  const detect=async()=>{
   clearTimeout(timer);request?.abort();const current=++sequence,text=body.value,controller=new AbortController();request=controller;
-  if(!text.trim()){manual=false;title.value='';detectedSource=text;detectedLine=null;render();return;}
+  if(!text.trim()){manual=false;title.value='';render();return;}
   const data=new FormData();data.set('_token',form.elements._token.value);data.set('body',text);
-  try{const result=await post('/partial/title',data,controller.signal);if(current!==sequence||body.value!==text)return;detectedSource=text;detectedLine=result.line;if(!manual)title.value=result.title;status.textContent=manual?'Your edited title is retained. Clear it to resume automatic detection.':'Title detected automatically. You can edit it; clearing the advisory starts fresh.';render();}
+  try{const result=await post('/partial/title',data,controller.signal);if(current!==sequence||body.value!==text)return;if(!manual)title.value=result.title;status.textContent=manual?'Your edited title is retained. Clear it to resume automatic detection.':'Title detected automatically. You can edit it; clearing the advisory starts fresh.';render();}
   catch(ex){if(ex.name!=='AbortError'&&current===sequence)status.textContent='Automatic detection is unavailable. Enter a title or let Publish generate it on the server.';}
  };
- body.addEventListener('input',event=>{invalidate();request?.abort();sequence++;render();clearTimeout(timer);if(!body.value.trim()){manual=false;title.value='';detectedSource='';detectedLine=null;render();return;}timer=setTimeout(detect,event.inputType==='insertFromPaste'?0:250);});
- body.addEventListener('paste',()=>{clearTimeout(timer);timer=setTimeout(detect,0);});
+ body.addEventListener('input',event=>{invalidate();request?.abort();sequence++;render();clearTimeout(timer);if(!body.value.trim()){manual=false;title.value='';render();return;}timer=setTimeout(detect,event.inputType==='insertFromPaste'?0:250);});
+ body.addEventListener('paste',()=>{
+  // Replacing the whole advisory starts a new announcement; an inline paste is an edit.
+  if(body.selectionStart===0&&body.selectionEnd===body.value.length){manual=false;title.value='';invalidate();request?.abort();sequence++;}
+  clearTimeout(timer);timer=setTimeout(detect,0);
+ });
  title.addEventListener('input',()=>{invalidate();manual=!!title.value.trim();request?.abort();sequence++;render();clearTimeout(timer);timer=setTimeout(detect,manual?250:0);});
  cancel.addEventListener('click',()=>{if(initial()!==original&&!window.confirm('Discard your unsaved advisory changes?'))return;request?.abort();window.location.assign(cancel.dataset.url);});
  form.addEventListener('submit',async event=>{

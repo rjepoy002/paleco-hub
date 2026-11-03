@@ -1,9 +1,9 @@
 <?php
 namespace App\Controllers;
 use App\Models\DB;
-use App\Services\{Auth,Announcement,WordPress,WordPressClient,WordPressFailure,Publisher,Drafts,PartialPublication,Attachments,History};
+use App\Services\{Auth,Announcement,WordPress,WordPressClient,WordPressFailure,Publisher,Drafts,PartialPublication,Attachments,History,PosterOcr,Reporting,Uploads};
 final class HubController {
-    public function __construct(private readonly Publisher $publisher=new Publisher()) {}
+    public function __construct(private readonly Publisher $publisher=new Publisher(),private readonly PosterOcr $ocr=new PosterOcr()) {}
     private ?array $user=null;
     private string $path='/';
     public function run(): void {
@@ -28,14 +28,13 @@ final class HubController {
             if (in_array($this->path,['/users','/wordpress'],true) && $this->user['role_id']!=1) { http_response_code(403); $this->render('error',['message'=>'Administrator access is required.']); return; }
             if($this->path==='/history/clear' && (int)$this->user['role_id']!==1){http_response_code(403);$this->render('error',['message'=>'Only Administrators may clear publishing history.']);return;}
             if($this->path==='/history/delete' && !in_array((int)$this->user['role_id'],[1,2],true)){http_response_code(403);$this->render('error',['message'=>'Publisher access is required.']);return;}
-            if (in_array($this->path,['/partial','/partial/title','/partial/prepare','/partial/publish','/scheduled','/edit','/announcement','/publish','/image'],true) && !in_array((int)$this->user['role_id'],[1,2],true)) { http_response_code(403); $this->render('error',['message'=>'Publisher or Administrator access is required.']); return; }
+            if (in_array($this->path,['/partial','/partial/title','/partial/prepare','/partial/publish','/scheduled','/scheduled/recognize','/edit','/announcement','/publish','/image'],true) && !in_array((int)$this->user['role_id'],[1,2],true)) { http_response_code(403); $this->render('error',['message'=>'Publisher or Administrator access is required.']); return; }
             if ($_SERVER['REQUEST_METHOD']==='POST') { $this->post(); return; }
             if ($_SERVER['REQUEST_METHOD']!=='GET') { http_response_code(405); return; }
             switch ($this->path) {
                 case '/dashboard':
-                    $stats=DB::query("SELECT COUNT(*) total, COALESCE(SUM(status IN ('draft','wordpress_draft')),0) drafts, COALESCE(SUM(wordpress_status='publish'),0) published FROM announcements")->fetch();
-                    $recent=DB::query('SELECT a.*,u.name author FROM announcements a JOIN users u ON u.id=a.user_id ORDER BY a.id DESC LIMIT 5')->fetchAll();
-                    $this->render('dashboard',compact('stats','recent')); break;
+                    $stats=Reporting::stats();$recent=Reporting::recent();$period=Reporting::period();
+                    $this->render('dashboard',compact('stats','recent','period')); break;
                 case '/partial': case '/scheduled': $this->render('announcement',['type'=>substr($this->path,1)]); break;
                 case '/edit': $record=Publisher::find((int)($_GET['id'] ?? 0)); $this->render('announcement',['type'=>$record['type'],'record'=>$record]); break;
                 case '/announcement':
@@ -43,10 +42,9 @@ final class HubController {
                     $attempts=DB::query('SELECT p.*,u.name actor FROM publishing_attempts p JOIN users u ON u.id=p.user_id WHERE p.announcement_id=? ORDER BY p.id DESC LIMIT 50',[$record['id']])->fetchAll();
                     $this->render('review',compact('record','mapping','reviewToken','attempts')); break;
                 case '/history':
-                    $rows=DB::query('SELECT a.*,u.name author FROM announcements a JOIN users u ON u.id=a.user_id WHERE a.history_hidden_at IS NULL ORDER BY a.id DESC LIMIT 100')->fetchAll();
-                    $active=DB::query("SELECT a.*,u.name author FROM announcements a JOIN users u ON u.id=a.user_id WHERE a.history_hidden_at IS NOT NULL AND (a.status IN ('draft','wordpress_draft','publishing') OR a.uncertain_stage IS NOT NULL OR (a.wordpress_post_id IS NOT NULL AND COALESCE(a.synced_revision,0)<>a.revision)) ORDER BY a.id DESC LIMIT 100")->fetchAll();
+                    $rows=DB::query("SELECT a.*,u.name author FROM announcements a JOIN users u ON u.id=a.user_id WHERE a.history_hidden_at IS NULL OR a.status IN ('draft','wordpress_draft','publishing') OR a.uncertain_stage IS NOT NULL OR (a.wordpress_post_id IS NOT NULL AND COALESCE(a.synced_revision,0)<>a.revision) ORDER BY a.id DESC LIMIT 100")->fetchAll();
                     $history=DB::query('SELECT h.*,a.title,u.name author FROM publishing_history h JOIN announcements a ON a.id=h.announcement_id JOIN users u ON u.id=h.user_id WHERE h.deleted_at IS NULL ORDER BY h.id DESC LIMIT 100')->fetchAll();
-                    $historySnapshot=History::snapshot();$this->render('history',compact('rows','active','history','historySnapshot'));break;
+                    $historySnapshot=History::snapshot();$this->render('history',compact('rows','history','historySnapshot'));break;
                 case '/users': $rows=DB::query('SELECT u.*,r.name role_name FROM users u JOIN roles r ON r.id=u.role_id ORDER BY u.name')->fetchAll(); $this->render('users',compact('rows')); break;
                 case '/wordpress': $connection=DB::query('SELECT id,website_url,rest_url,username,connection_status,tested_at FROM wordpress_connections WHERE id=1')->fetch() ?: ['website_url'=>'https://paleco.net/paleco','rest_url'=>'https://paleco.net/paleco/wp-json/wp/v2','username'=>'','connection_status'=>'Not configured','tested_at'=>null]; $mappings=DB::query('SELECT * FROM category_mappings ORDER BY module')->fetchAll(); $this->render('wordpress',compact('connection','mappings')); break;
                 case '/security': $sessions=DB::query('SELECT * FROM login_sessions WHERE user_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP() ORDER BY last_seen DESC',[$this->user['id']])->fetchAll(); $devices=DB::query('SELECT selector,device,created_at,expires_at FROM remembered_devices WHERE user_id=? AND revoked_at IS NULL AND expires_at>UTC_TIMESTAMP()',[$this->user['id']])->fetchAll(); $this->render('security',compact('sessions','devices')); break;
@@ -55,7 +53,7 @@ final class HubController {
             }
         } catch (\Throwable $ex) {
             if (DBReady::isValidation($ex)) { $_SESSION['flash']=$ex->getMessage(); } else { error_log('PALECO Hub failure: '.get_class($ex).' code '.$ex->getCode()); $_SESSION['flash']='The request could not be completed. Check application configuration or contact your administrator.'; }
-            if(in_array($this->path,['/partial/title','/partial/prepare'],true)) { http_response_code(422); header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
+            if(in_array($this->path,['/partial/title','/partial/prepare','/scheduled/recognize'],true)) { http_response_code(422); header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
             if($this->path==='/partial/publish' && $this->user) {
                 http_response_code(422);
                 $this->partialFailure(); return;
@@ -74,12 +72,19 @@ final class HubController {
         $id=(int)$this->user['id'];
         switch ($this->path) {
             case '/logout': Auth::logout($id); go('/login');
+            case '/scheduled/recognize':
+                $files=Attachments::files($_FILES['posters'] ?? null);$results=[];$announcement=(int)($_POST['id'] ?? 0);$remove=array_map('intval',is_array($_POST['remove_attachments'] ?? null)?$_POST['remove_attachments']:[]);
+                $saved=$announcement?Attachments::all($announcement):[];$saved=array_values(array_filter($saved,fn($p)=>!in_array((int)$p['id'],$remove,true)));
+                if(count($saved)+count($files)>Attachments::limit())throw new \RuntimeException('Too many posters selected.');
+                foreach($saved as $poster){$r=$this->ocr->scan(Uploads::path($poster['storage_name']));PosterOcr::save((int)$poster['id'],$r);unset($r['text'],$r['hash'],$r['provider']);$results[]=$r;}
+                foreach($files as $file){if($file['error']!==UPLOAD_ERR_OK||!is_uploaded_file($file['tmp_name']))throw new \RuntimeException('A selected image could not be scanned. Use images up to 8 MB each.');$r=$this->ocr->scan($file['tmp_name']);unset($r['text'],$r['hash'],$r['provider']);$results[]=$r;}
+                header('Content-Type: application/json');echo json_encode(['posters'=>$results],JSON_THROW_ON_ERROR);return;
             case '/history/delete':
                 History::remove($id,(string)($_POST['kind'] ?? ''),(int)($_POST['id'] ?? 0),($_POST['confirmed'] ?? '')==='1');
                 $_SESSION['flash']='Local history record deleted. Drafts, files, synchronization IDs and WordPress content were preserved.';go('/history');
             case '/history/clear':
                 $count=History::clear($id,(string)($_POST['snapshot_token'] ?? ''),($_POST['confirmed'] ?? '')==='1');
-                $_SESSION['flash']=$count.' local history records cleared. Active drafts and WordPress content were preserved.';go('/history');
+                $_SESSION['flash']=$count.' local history records cleared. Dashboard statistics reset. Drafts and WordPress content were preserved.';go('/history');
             case '/partial/title':
                 $body=$_POST['body'] ?? '';
                 if(!is_string($body) || mb_strlen($body)>100000) throw new \RuntimeException('Enter advisory text up to 100,000 characters.');
@@ -91,7 +96,7 @@ final class HubController {
                 $_SESSION['flash']='Announcement published to WordPress. Use View on WordPress below to open it.';
                 go('/announcement?id='.$record['id']);
             case '/partial': case '/scheduled':
-                $savedId=Drafts::save(substr($this->path,1),$id,$_POST,$_FILES['posters'] ?? $_FILES['poster'] ?? null);
+                $savedId=Drafts::save(substr($this->path,1),$id,$_POST,$_FILES['posters'] ?? $_FILES['poster'] ?? null,$this->ocr);
                 if($this->path==='/scheduled' && ($_POST['next'] ?? '')==='wordpress_draft'){
                     // If a remote upload fails, keep the already-saved attachment identities for retry.
                     $_POST['id']=$savedId;

@@ -64,7 +64,7 @@ final class PartialPublication {
                     }
                     $value=['id'=>$id,'revision'=>$revision,'hash'=>$hash,'original_id'=>$meta['id'],'original_revision'=>$meta['revision']];
                     DB::query('INSERT INTO application_settings(setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=VALUES(setting_value)',[$key,json_encode($value,JSON_THROW_ON_ERROR)]);
-                    DB::audit($userId,'partial.publication_confirmed'); $db->commit();
+                    if(!$old||$changed)Reporting::touch($id);DB::audit($userId,'partial.publication_confirmed'); $db->commit();
                 } catch(\Throwable $ex) { $db->rollBack(); throw $ex; }
                 $record=Publisher::find($id);
                 try { return $publisher->send($id,$userId,'publish',(int)$record['revision'],Publisher::reviewToken($record),true); }

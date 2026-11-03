@@ -18,6 +18,14 @@ final class FakeWordPressTransport implements WordPressTransport {
         if($mode==='auth')return $this->result(['message'=>'raw secret must never appear'],401);
         if($mode==='offline')throw new WordPressFailure('WordPress could not be reached or timed out. Retry to reconcile the result before another write.',$method==='POST');
         $route=parse_url($path,PHP_URL_PATH);parse_str(parse_url($path,PHP_URL_QUERY) ?? '',$query);
+        $this->state['tags'] ??= [];
+        if($route==='/tags' && $method==='GET')return $this->result(array_values(array_filter($this->state['tags'],fn($tag)=>isset($query['slug'])?$tag['slug']===$query['slug']:str_contains($tag['name'],$query['search'] ?? ''))));
+        if($route==='/tags' && $method==='POST'){
+            if($mode==='tag-rejected')return $this->result([],403);
+            foreach($this->state['tags'] as $tag)if($tag['slug']===$data['slug'])return $this->result([],400);
+            $id=++$this->state['next'];$tag=['id'=>$id,'name'=>$data['name'],'slug'=>$data['slug']];$this->state['tags'][$id]=$tag;
+            if($mode==='tag-timeout'){$this->state['mode']='ok';throw new WordPressFailure('Year tag result is uncertain.',true);}return $this->result($tag,201);
+        }
         if($route==='/users/me')return $this->result(['id'=>7,'capabilities'=>$this->state['capabilities']]);
         if(str_starts_with($route,'/categories')) {
             if($mode==='category-missing')return $this->result([],404);
@@ -50,7 +58,8 @@ final class FakeWordPressTransport implements WordPressTransport {
             if($mode==='post-rejected')return $this->result([],400);
             if($mode==='timeout-before-post')throw new WordPressFailure('The post result is uncertain. Retry reconciliation.',true);
             $id=isset($m[1])?(int)$m[1]:++$this->state['next'];
-            $item=['id'=>$id,'slug'=>$data['slug'],'status'=>$data['status'],'title'=>['raw'=>$data['title']],'content'=>['raw'=>$data['content']],'categories'=>$data['categories'],'featured_media'=>$data['featured_media'] ?? 0,'link'=>'https://wordpress.example.invalid/?p='.$id];
+            $item=['id'=>$id,'slug'=>$data['slug'],'status'=>$data['status'],'title'=>['raw'=>$data['title']],'content'=>['raw'=>$data['content']],'categories'=>$data['categories'],'tags'=>$data['tags'] ?? [],'featured_media'=>$data['featured_media'] ?? 0,'link'=>'https://wordpress.example.invalid/?p='.$id];
+            if($mode==='content-filter')$item['content']['raw']='<p>'.$data['content'].'</p>';
             $this->state['posts'][$id]=$item;
             if($mode==='post-timeout'){$this->state['mode']='ok';throw new WordPressFailure('WordPress timed out after the post may have been accepted.',true);}
             if($mode==='invalid-json')return ['status'=>201,'body'=>'not JSON'];

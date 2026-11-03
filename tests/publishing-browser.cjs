@@ -11,14 +11,12 @@ const path=require('node:path');
   await context.addCookies([{name:'PALECOHUB',value:cookie,url:base+'/',httpOnly:true,sameSite:'Lax'}]);
   const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(base+'/partial');await page.locator('#body').fill('Power Service Advisory\n\nBrowser publishing fixture.\nAll text stays safe.');await page.locator('#title').fill('Browser publishing advisory');
-  await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});
-  assert.ok(await page.locator('#partial-confirm').getByText('Browser publishing advisory',{exact:true}).isVisible());
-  assert.ok(await page.locator('#partial-confirm').getByText('WordPress category: POWER_ADVISORY',{exact:true}).isVisible());
-  await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL('**/announcement?id=*');
+  await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-success').waitFor({state:'visible'});
+  await page.goto(base+'/history');await page.locator('a[href*="/announcement?id="]').first().click();
   const reviewUrl=page.url();const idBefore=await page.locator('.col-lg-4 section p').first().textContent();
   await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();
   assert.equal(await page.locator('.col-lg-4 section p').first().textContent(),idBefore);
-  await page.getByRole('link',{name:'Edit local announcement'}).click();await page.locator('#title').fill('Browser edited advisory');await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL(reviewUrl);
+  await page.getByRole('link',{name:'Edit local announcement'}).click();await page.locator('#title').fill('Browser edited advisory');await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-success').waitFor({state:'visible'});await page.goto(reviewUrl);
   await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();assert.equal(await page.locator('.col-lg-4 section p').first().textContent(),idBefore);
   await page.screenshot({path:path.join(__dirname,'../storage/screenshots/phase2-review-desktop.png'),fullPage:true});
   for(const width of [390,360,768]){

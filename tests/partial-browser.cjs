@@ -1,42 +1,29 @@
 const {chromium}=require('../storage/qa/node_modules/playwright');
-const assert=require('node:assert/strict');const fs=require('node:fs');const path=require('node:path');
+const assert=require('node:assert/strict'),fs=require('node:fs');
 (async()=>{
- const [base,cookie,fixture]=process.argv.slice(2);const browser=await chromium.launch({channel:'chrome',headless:true});
- const mode=value=>{const s=JSON.parse(fs.readFileSync(fixture,'utf8'));s.mode=value;fs.writeFileSync(fixture,JSON.stringify(s));};
- const postCount=()=>JSON.parse(fs.readFileSync(fixture,'utf8')).calls.filter(c=>c.method==='POST'&&c.path==='/posts').length;
+ const [base,cookie,fixture]=process.argv.slice(2),browser=await chromium.launch({channel:'chrome',headless:true});
+ const state=()=>JSON.parse(fs.readFileSync(fixture,'utf8'));
+ const mode=value=>{const s=state();s.mode=value;fs.writeFileSync(fixture,JSON.stringify(s));};
+ const count=()=>state().calls.filter(c=>c.method==='POST'&&c.path==='/posts').length;
  try{
- const context=await browser.newContext({viewport:{width:390,height:844}});await context.route('**/*',route=>new URL(route.request().url()).origin===new URL(base).origin?route.continue():route.abort());await context.addCookies([{name:'PALECOHUB',value:cookie,url:base+'/',httpOnly:true,sameSite:'Lax'}]);
- const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/partial');
- assert.deepEqual(await page.locator('#announcement-form button').allTextContents(),['Publish','Cancel']);
- let dialogCount=0;const clean=()=>dialogCount++;page.on('dialog',clean);await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.waitForURL('**/history');assert.equal(dialogCount,0);page.off('dialog',clean);
- await page.goto(base+'/partial');const body=page.locator('#body'),title=page.locator('#title');
- await body.evaluate(el=>{el.dispatchEvent(new Event('paste',{bubbles:true}));el.value='⚡️ Power Service Advisory Final Update\n\nRestored in Bárangay Maligaya.';el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromPaste'}));});await page.waitForFunction(()=>document.getElementById('title').value==='⚡️ Power Service Advisory Final Update');
- await title.fill('My manual title');await body.fill('Power Service Advisory New Update\n\nNew content.');await page.waitForResponse(r=>r.url().endsWith('/partial/title'));assert.equal(await title.inputValue(),'My manual title');
- await title.fill('');await page.waitForFunction(()=>document.getElementById('title').value==='Power Service Advisory New Update');
- // A replacement paste starts a new announcement; ordinary edits and inline pastes retain overrides.
- const timestampBody='PALECO INFO 10/30/26 1:58 PM\n\nPower Service Advisory Original Heading\n\nRestored in Maligaya.';
- await title.fill('Previous announcement manual title');
- await body.evaluate((el,text)=>{el.select();el.dispatchEvent(new Event('paste',{bubbles:true}));el.value=text;el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromPaste'}));},timestampBody);
- await page.waitForFunction(()=>document.getElementById('title').value==='Power Service Advisory 10/30/26 1:58 PM');assert.equal(await page.locator('#preview-body').textContent(),timestampBody);
- await title.fill('Publisher timestamp override');await body.fill(timestampBody+'\nTyped correction.');await page.waitForResponse(r=>r.url().endsWith('/partial/title'));assert.equal(await title.inputValue(),'Publisher timestamp override');
- await body.evaluate(el=>{el.setSelectionRange(el.value.length,el.value.length);el.dispatchEvent(new Event('paste',{bubbles:true}));el.value+='\nPasted correction.';el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertFromPaste'}));});
- await page.waitForResponse(r=>r.url().endsWith('/partial/title'));assert.equal(await title.inputValue(),'Publisher timestamp override');
- await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});assert.equal(await page.locator('#partial-confirm-heading').textContent(),'Publisher timestamp override');assert.equal(await page.locator('#partial-confirm-body').textContent(),await body.inputValue());await page.getByRole('button',{name:'Go back',exact:true}).click();
- await body.fill('');assert.equal(await title.inputValue(),'');await body.fill('Supply restored in Maligaya.');await page.waitForFunction(()=>document.getElementById('title').value.includes('Supply restored in Maligaya.'));
- page.once('dialog',d=>d.dismiss());await page.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal(await body.inputValue(),'Supply restored in Maligaya.');
- page.once('dialog',d=>d.accept());await page.getByRole('button',{name:'Cancel',exact:true}).click();await page.waitForURL('**/history');
- // Delay one detection response and edit both content and title while it is in flight.
- await page.goto(base+'/partial');let delayedResolve;const held=new Promise(resolve=>delayedResolve=resolve);
- await page.route('**/partial/title',async route=>{if(route.request().postData().includes('Old')){const response=await route.fetch();await held;await route.fulfill({response});}else await route.continue();});
- await body.fill('Power Service Advisory Old\nOld body.');await page.waitForRequest(r=>r.url().endsWith('/partial/title'));await body.fill('Power Service Advisory Latest\nLatest body.');await title.fill('Manual latest title');delayedResolve();
- await page.waitForResponse(r=>r.url().endsWith('/partial/title'));assert.equal(await title.inputValue(),'Manual latest title');await page.unroute('**/partial/title');
- const before=postCount();await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});assert.ok((await page.locator('#partial-confirm').textContent()).includes('publicly visible'));assert.ok((await page.locator('#partial-confirm').textContent()).includes('POWER_ADVISORY'));assert.equal(postCount(),before);
- assert.equal(await page.locator('#partial-confirm-body').textContent(),await body.inputValue());assert.equal(await page.locator('#preview-body').textContent(),await body.inputValue());
- await page.getByRole('button',{name:'Go back',exact:true}).click();assert.equal(postCount(),before);assert.equal(await title.inputValue(),'Manual latest title');
- mode('auth');await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL('**/partial/publish');assert.equal(await title.inputValue(),'Manual latest title');assert.ok((await page.locator('[role=status]').textContent()).includes('authentication failed'));
- mode('post-timeout');await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForLoadState('networkidle');assert.equal(await title.inputValue(),'Manual latest title');const accepted=postCount();
- await page.getByRole('button',{name:'Publish',exact:true}).click();await page.locator('#partial-confirm').waitFor({state:'visible'});await page.getByRole('button',{name:'Confirm and publish'}).click();await page.waitForURL('**/announcement?id=*');await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();assert.equal(postCount(),accepted);
- await page.goto(base+'/partial');await body.fill('Power Service Advisory Mobile\n\nPreview details.');await page.waitForFunction(()=>document.getElementById('title').value==='Power Service Advisory Mobile');await page.screenshot({path:path.join(__dirname,'../storage/screenshots/partial-publish-mobile.png'),fullPage:true});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
- console.log('BROWSER PASS: automatic/fallback titles, manual/reset behavior, stale response safety, clean/dirty Cancel, confirmation cancellation, preserved errors and duplicate-safe retry.');
+  const context=await browser.newContext({viewport:{width:390,height:844}});
+  await context.route('**/*',r=>new URL(r.request().url()).origin===new URL(base).origin?r.continue():r.abort());
+  await context.addCookies([{name:'PALECOHUB',value:cookie,url:base+'/',httpOnly:true,sameSite:'Lax'}]);
+  const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(base+'/partial');
+  const body=page.locator('#body'),title=page.locator('#title'),publish=page.locator('#partial-publish');
+  assert.deepEqual(await page.locator('#announcement-form button').allTextContents(),['Publish','Cancel']);
+  const text='PALECO INFO 11/03/26 11:07 AM\nPower Service Advisory Original Heading\nSupply restored in Maligaya.';
+  const fill=async()=>{await body.fill(text);await page.waitForFunction(()=>document.querySelector('#title').value==='Power Service Advisory 11/03/26 11:07 AM');};
+  const success=async()=>{await page.locator('#partial-success').waitFor({state:'visible'});assert.equal(await body.inputValue(),'');assert.equal(await title.inputValue(),'');assert.equal(await page.locator('[name=id]').inputValue(),'0');assert.equal(await page.locator('[name=confirmation_token]').inputValue(),'');assert.equal(await body.evaluate(el=>el===document.activeElement),true);assert.equal(page.url(),base+'/partial');};
+  await fill();const op=await page.locator('[name=operation]').inputValue(),before=count();
+  await publish.evaluate(el=>{el.click();el.click();});await success();await page.waitForTimeout(400);assert.equal(await title.inputValue(),'');assert.equal(await body.inputValue(),'');assert.equal(count(),before+1);assert.notEqual(await page.locator('[name=operation]').inputValue(),op);
+  const first=Object.keys(state().posts);await fill();await publish.click();await success();assert.equal(count(),before+2);assert.equal(Object.keys(state().posts).length,first.length+1);
+  await fill();const retryOp=await page.locator('[name=operation]').inputValue();mode('auth');await publish.click();await page.locator('#partial-error').waitFor({state:'visible'});assert.equal(await body.inputValue(),text);assert.equal(await page.locator('[name=operation]').inputValue(),retryOp);
+  mode('post-timeout');await publish.click();await page.waitForFunction(()=>!document.querySelector('#partial-publish').disabled);assert.equal(await body.inputValue(),text);const accepted=count();await publish.click();await success();assert.equal(count(),accepted);
+  // A draft/ambiguous JSON response is never enough to reset; retry identity survives.
+  await fill();await page.route('**/partial/publish',r=>r.fulfill({json:{status:'wordpress_draft',wordpress_status:'draft',wordpress_post_id:999,history_finalized:true}}));await publish.click();await page.locator('#partial-error').waitFor({state:'visible'});assert.equal(await body.inputValue(),text);await page.unroute('**/partial/publish');
+  await page.route('**/partial/publish',r=>r.abort('timedout'));await publish.click();await page.waitForFunction(()=>!document.querySelector('#partial-publish').disabled);assert.equal(await body.inputValue(),text);await page.unroute('**/partial/publish');
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));assert.deepEqual(errors,[]);
+  console.log('BROWSER PASS: mobile reset/focus, next publication, fresh identity, double clicks, preserved failures/drafts/network timeouts and duplicate-safe reconciliation.');
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1);});

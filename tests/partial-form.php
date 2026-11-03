@@ -36,6 +36,16 @@ rejects(fn()=>partialForm("\u{00A0}\u{200B}"),'Unicode whitespace-only advisory 
 rejects(fn()=>partialForm("Invalid\0text"),'unsupported control characters rejected');
 rejects(fn()=>PartialPublication::prepare($viewer,$form),'ordinary users cannot prepare a publication');
 $mock->state['mode']='post-timeout';$timeout=partialForm($advisory,'Uncertain direct form');rejects(fn()=>PartialPublication::publish($publisherService,2,$timeout),'direct form preserves uncertain post result');$entry=PartialPublication::lookup(2,$timeout['operation']);check(Publisher::find($entry['id'])['status']==='failed','failed direct attempt is tracked as failed rather than a draft');$count=writeCount();$a=PartialPublication::publish($publisherService,2,$timeout);check(writeCount()===$count&&$a['status']==='published','direct form retry reconciles accepted post without another creation');
+// Simulate a failed local finalization after WordPress accepted the publication.
+$historyFailure=partialForm($advisory,'History reconciliation');
+DB::query("CREATE TRIGGER fail_partial_history BEFORE INSERT ON publishing_history FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='Injected history failure'");
+try { rejects(fn()=>PartialPublication::publish($publisherService,2,$historyFailure),'history failure cannot report publication success'); }
+finally { DB::query('DROP TRIGGER fail_partial_history'); }
+$pending=PartialPublication::lookup(2,$historyFailure['operation']);
+check(Publisher::find($pending['id'])['uncertain_stage']==='post','history failure retains durable remote reconciliation identity');
+$count=writeCount();$recovered=PartialPublication::publish($publisherService,2,$historyFailure);
+check($recovered['status']==='published' && writeCount()===$count,'history retry finalizes accepted post without a second write');
+check((bool)DB::query("SELECT 1 FROM publishing_history WHERE announcement_id=? AND status='published'",[$recovered['id']])->fetchColumn(),'reconciled publication retains successful history');
 // Refresh the fake server state after service-only tests; never use production credentials.
 file_put_contents($fixture,json_encode($mock->state,JSON_THROW_ON_ERROR));
 [$code,$html]=request('/partial',$httpAdmin);check($code===200&&!str_contains($html,'Detect title from announcement')&&!str_contains($html,'Save draft')&&!str_contains($html,'Save and review for WordPress'),'partial main form removes title and draft action controls');

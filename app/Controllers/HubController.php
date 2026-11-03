@@ -12,6 +12,7 @@ final class HubController {
         try {
             if ($_SERVER['REQUEST_METHOD']==='POST' && (!is_string($_POST['_token'] ?? null) || !hash_equals($_SESSION['csrf'],$_POST['_token']))) {
                 http_response_code(419);
+                if($this->path==='/partial/publish' && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) { header('Content-Type: application/json'); echo json_encode(['error'=>'This form expired. Copy your advisory before refreshing.']); return; }
                 if($this->path==='/partial/publish') {
                     $this->user=Auth::user();
                     if($this->user && in_array((int)$this->user['role_id'],[1,2],true)) { $_SESSION['flash']='The confirmation expired. Your advisory is preserved below. Choose Publish to review it again.'; $this->partialFailure(); return; }
@@ -56,6 +57,7 @@ final class HubController {
             if(in_array($this->path,['/partial/title','/partial/prepare','/scheduled/recognize'],true)) { http_response_code(422); header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
             if($this->path==='/partial/publish' && $this->user) {
                 http_response_code(422);
+                if(str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) { header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
                 $this->partialFailure(); return;
             }
             if ($this->path==='/auth/google/callback' || $this->path==='/auth/google') { header('Location: '.local_url('/login')); exit; }
@@ -93,6 +95,11 @@ final class HubController {
                 header('Content-Type: application/json'); echo json_encode(PartialPublication::prepare($id,$_POST),JSON_THROW_ON_ERROR); return;
             case '/partial/publish':
                 $record=PartialPublication::publish($this->publisher,$id,$_POST);
+                if(str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) {
+                    $history=DB::query("SELECT 1 FROM publishing_history WHERE announcement_id=? AND wordpress_post_id=? AND status='published' LIMIT 1",[$record['id'],$record['wordpress_post_id']])->fetchColumn();
+                    if($record['status']!=='published' || $record['wordpress_status']!=='publish' || !$record['wordpress_post_id'] || $record['uncertain_stage'] || (int)$record['synced_revision']!==(int)$record['revision'] || !$history) throw new \RuntimeException('Publication is not finalized. Retry this same form to reconcile its result.');
+                    header('Content-Type: application/json'); echo json_encode(['status'=>'published','wordpress_status'=>'publish','wordpress_post_id'=>(int)$record['wordpress_post_id'],'history_finalized'=>true,'next_operation'=>bin2hex(random_bytes(32))]); return;
+                }
                 $_SESSION['flash']='Announcement published to WordPress. Use View on WordPress below to open it.';
                 go('/announcement?id='.$record['id']);
             case '/partial': case '/scheduled':

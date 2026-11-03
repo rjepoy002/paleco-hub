@@ -1,29 +1,15 @@
 # Partial update publishing form
 
-The Partial Power Interruption Update main form now has exactly **Publish** and **Cancel** actions. The Scheduled Power Interruption form is unchanged. Existing backend draft endpoints and history/review actions are retained for compatibility.
+The main form has Publish and Cancel. Publish validates and signs content through the existing /partial/prepare endpoint, then submits asynchronously to /partial/publish using existing authentication and CSRF. There is no additional publication dialog. Scheduled publishing is unchanged.
 
-## Behavior
+The existing PartialPublication service stores a user-bound operation mapping, creates or updates the local announcement, and calls Publisher::send. Publisher tracks the pending remote payload before writing, verifies WordPress status and content, and commits announcement state, attempt results and history together. Uncertain results reconcile by the existing mapped post ID or random remote slug, without another creation.
 
-- Typing is debounced 250 ms; pasted text is processed promptly. The authenticated `/partial/title` endpoint calls the shared PHP `Announcement` rules, removing the duplicate JavaScript regex.
-- Recognizable advisory titles retain their emoji, Unicode, case and whitespace. Otherwise a bounded editable fallback is generated from the first meaningful advisory line. Empty input generates no title. Limits remain 255 title characters and 100,000 body characters.
-- Manual title edits survive body changes. Clearing the title resumes detection; clearing the advisory resets manual state for a new advisory. Existing saved titles initially count as intentional overrides.
-- Abort/sequence guards reject stale responses. Changes during confirmation preparation invalidate the result.
-- The modal shows the final title, POWER_ADVISORY category, body preview and public-visibility warning. Opening/cancelling it creates no local record or WordPress draft.
-- Cancel goes to Publishing History and asks for confirmation only when body/title differ from their initial values.
-- The recognized heading is omitted from WordPress body content because it already appears as the post title. Original text remains stored for history; public content retains escaping and line breaks.
+The JSON success contract requires published local status, WordPress publish status, a known post ID, a synced revision, no uncertain stage and saved published history. Normal HTML requests retain their existing response behavior.
 
-## Confirmed publishing and retry safety
+Only this confirmed success clears content, title, local IDs, versions, confirmation token, validation and preview. A fresh server-generated operation replaces the prior identity. Title detection timers and requests are cancelled and sequence guards reject late results; this form has no draft autosave. The empty content field receives focus without scrolling, a non-blocking success message appears, and the module remains open. Failure, timeout, draft or ambiguous results retain content and operation identity for safe retry. Published records and history are never deleted by reset.
 
-`POST /partial/prepare` validates and signs confirmation without saving a draft. `POST /partial/publish` requires CSRF, an active Publisher/Administrator, explicit confirmation, and a signature bound to user/content/operation/version/current WordPress configuration. It then calls the existing `Publisher::send` with `publish` status.
+Title detection retains the existing source timestamp behavior (for example Power Service Advisory 11/03/26 11:07 AM), manual overrides and fallback rules. The complete original title line stays in the body. POWER_ADVISORY category and tag, plain text cleanup and credential configuration are unchanged.
 
-Only confirmed submissions create a publishing record. Failed attempts are marked failed and retain content for retry/history. The operation-to-announcement mapping uses existing `application_settings`, keyed by a user-bound random operation ID. No schema migration or credential/configuration change is needed. Do not delete operation entries for outstanding requests; they retain retry identity when a browser response is lost.
+No configuration or migration is required. No production test publication is needed. Run php tests/run.php and php tests/run.php --browser; tests use fake WordPress and temporary databases.
 
-Repeated submissions reuse the recorded announcement and remote post ID. A definite rejection permits a corrected, freshly confirmed retry on the same record. Pending uncertain writes cannot be edited around reconciliation. The existing destination binding, exact category resolution, locks, history, and reconciliation remain authoritative even when client buttons are disabled.
-
-WordPress and expired-CSRF failures render the form with its body/title and operation preserved. Success opens the existing result page with feedback and View on WordPress. After an uncertain result, retry that same preserved form rather than starting a separate advisory.
-
-## Verification
-
-Run `composer test` and `php tests/run.php --browser`. The full browser run passed **149 checks**. All publishing tests use fake WordPress responses and isolated temporary databases. Coverage includes titles/fallbacks, pasted/typed Unicode and emoji, long/empty/invalid input, manual/reset behavior, stale responses, clean/dirty Cancel, confirmation cancellation, CSRF/permissions, preserved errors, POWER_ADVISORY, repeated requests, and reconciliation after an accepted-post timeout. Existing scheduled poster and authentication tests remain applicable.
-
-Manual checks: inspect the two-button row on desktop and a physical phone; paste an actual advisory, override/reset its title, open confirmation and choose Go back, then test Cancel's discard prompt. A live publication is intentionally left to an authorized user with a real approved advisory. No live test publication or GitHub push was performed.
+For localhost manual verification, open /paleco-hub/partial with an authorized account, paste an approved advisory and review its title and preview. Publish only when the advisory is approved for the configured destination. Verify success, empty fields and focus; paste a second advisory and verify distinct posts and retained history. With a test WordPress destination, simulate failure or timeout and verify fields remain and retry reconciles the same post. Check desktop and Android Chrome, including narrow screens.

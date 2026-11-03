@@ -2,6 +2,8 @@
 use App\Models\DB;
 use App\Services\{InterruptionDates,PosterOcr,Reporting,History,Publisher,Drafts,Attachments};
 require_once ROOT.'/tests/FakeVisionTransport.php';
+require ROOT.'/tests/ocr-recognition.php';
+require ROOT.'/tests/ocr-usage.php';
 foreach(['October 25, 2026','Oct 25, 2026','10/25/2026'] as $printed){$r=InterruptionDates::extract("PALECO\nPublication Date: October 22, 2026\nINTERRUPTION DATE: $printed (Sunday)\nTIME: 6 AM to 5 PM");check($r['status']==='valid'&&$r['date']==='2026-10-25','labelled date parser recognizes '.$printed.' and validates Sunday');}
 check(InterruptionDates::extract("Date of Interruption:\nOctober 25, 2026\nSunday")['date']==='2026-10-25','alternate interruption label and line breaks recognized');
 check(InterruptionDates::extract('Interruption Date: February 30, 2026')['status']==='missing','invalid calendar date rejected');
@@ -52,4 +54,5 @@ try{
     [$httpCode,$html]=request('/dashboard',$httpAdmin);check($httpCode===200&&str_contains($html,'Since Last History Reset')&&str_contains($html,'WordPress Drafts')&&str_contains($html,'Failed / Pending'),'dashboard presents all reset-aware counters and period label');
     [$httpCode,$html]=request('/scheduled',$httpAdmin);check(!str_contains($html,'name="date_confirmed"')&&!str_contains($html,'name="date_conflict_confirmed"'),'scheduled form contains no interruption-date confirmation checkboxes');
     file_put_contents($fixture,json_encode($mock->state));if(in_array('--browser',$argv,true)){$p=proc_open(['node',ROOT.'/tests/consolidated-browser.cjs','http://127.0.0.1:'.$port.'/paleco-hub',$httpAdmin,$visionFile],[0=>STDIN,1=>STDOUT,2=>STDERR],$pipes,ROOT);check(proc_close($p)===0,'OCR automatic/manual/conflicting dates and persistent dashboard reset browser checks');}
+require ROOT.'/tests/scheduled-auto.php';
 }finally{foreach($paths as $path)if(is_file($path))unlink($path);}

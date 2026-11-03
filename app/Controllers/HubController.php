@@ -1,7 +1,7 @@
 <?php
 namespace App\Controllers;
 use App\Models\DB;
-use App\Services\{Auth,Announcement,WordPress,WordPressClient,WordPressFailure,Publisher,Drafts,PartialPublication,Attachments,History,PosterOcr,Reporting,Uploads};
+use App\Services\{Auth,Announcement,WordPress,WordPressClient,WordPressFailure,Publisher,Drafts,PartialPublication,ScheduledPublication,Attachments,History,PosterOcr,Reporting,Uploads};
 final class HubController {
     public function __construct(private readonly Publisher $publisher=new Publisher(),private readonly PosterOcr $ocr=new PosterOcr()) {}
     private ?array $user=null;
@@ -12,7 +12,7 @@ final class HubController {
         try {
             if ($_SERVER['REQUEST_METHOD']==='POST' && (!is_string($_POST['_token'] ?? null) || !hash_equals($_SESSION['csrf'],$_POST['_token']))) {
                 http_response_code(419);
-                if($this->path==='/partial/publish' && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) { header('Content-Type: application/json'); echo json_encode(['error'=>'This form expired. Copy your advisory before refreshing.']); return; }
+                if(in_array($this->path,['/partial/publish','/scheduled/publish'],true) && str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) { header('Content-Type: application/json'); echo json_encode(['error'=>'This form expired. Copy your advisory before refreshing.']); return; }
                 if($this->path==='/partial/publish') {
                     $this->user=Auth::user();
                     if($this->user && in_array((int)$this->user['role_id'],[1,2],true)) { $_SESSION['flash']='The confirmation expired. Your advisory is preserved below. Choose Publish to review it again.'; $this->partialFailure(); return; }
@@ -29,7 +29,7 @@ final class HubController {
             if (in_array($this->path,['/users','/wordpress'],true) && $this->user['role_id']!=1) { http_response_code(403); $this->render('error',['message'=>'Administrator access is required.']); return; }
             if($this->path==='/history/clear' && (int)$this->user['role_id']!==1){http_response_code(403);$this->render('error',['message'=>'Only Administrators may clear publishing history.']);return;}
             if($this->path==='/history/delete' && !in_array((int)$this->user['role_id'],[1,2],true)){http_response_code(403);$this->render('error',['message'=>'Publisher access is required.']);return;}
-            if (in_array($this->path,['/partial','/partial/title','/partial/prepare','/partial/publish','/scheduled','/scheduled/recognize','/edit','/announcement','/publish','/image'],true) && !in_array((int)$this->user['role_id'],[1,2],true)) { http_response_code(403); $this->render('error',['message'=>'Publisher or Administrator access is required.']); return; }
+            if (in_array($this->path,['/partial','/partial/title','/partial/prepare','/partial/publish','/scheduled','/scheduled/recognize','/scheduled/publish','/edit','/announcement','/publish','/image'],true) && !in_array((int)$this->user['role_id'],[1,2],true)) { http_response_code(403); $this->render('error',['message'=>'Publisher or Administrator access is required.']); return; }
             if ($_SERVER['REQUEST_METHOD']==='POST') { $this->post(); return; }
             if ($_SERVER['REQUEST_METHOD']!=='GET') { http_response_code(405); return; }
             switch ($this->path) {
@@ -54,7 +54,7 @@ final class HubController {
             }
         } catch (\Throwable $ex) {
             if (DBReady::isValidation($ex)) { $_SESSION['flash']=$ex->getMessage(); } else { error_log('PALECO Hub failure: '.get_class($ex).' code '.$ex->getCode()); $_SESSION['flash']='The request could not be completed. Check application configuration or contact your administrator.'; }
-            if(in_array($this->path,['/partial/title','/partial/prepare','/scheduled/recognize'],true)) { http_response_code(422); header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
+            if(in_array($this->path,['/partial/title','/partial/prepare','/scheduled/recognize','/scheduled/publish'],true)) { http_response_code(422); header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
             if($this->path==='/partial/publish' && $this->user) {
                 http_response_code(422);
                 if(str_contains($_SERVER['HTTP_ACCEPT'] ?? '', 'application/json')) { header('Content-Type: application/json'); echo json_encode(['error'=>$_SESSION['flash']]); unset($_SESSION['flash']); return; }
@@ -74,13 +74,15 @@ final class HubController {
         $id=(int)$this->user['id'];
         switch ($this->path) {
             case '/logout': Auth::logout($id); go('/login');
+            case '/scheduled/publish':
+                header('Content-Type: application/json');echo json_encode(ScheduledPublication::publish($this->publisher,$this->ocr,$id,$_POST,$_FILES['posters'] ?? null),JSON_THROW_ON_ERROR);return;
             case '/scheduled/recognize':
                 $files=Attachments::files($_FILES['posters'] ?? null);$results=[];$announcement=(int)($_POST['id'] ?? 0);$remove=array_map('intval',is_array($_POST['remove_attachments'] ?? null)?$_POST['remove_attachments']:[]);
                 $saved=$announcement?Attachments::all($announcement):[];$saved=array_values(array_filter($saved,fn($p)=>!in_array((int)$p['id'],$remove,true)));
                 if(count($saved)+count($files)>Attachments::limit())throw new \RuntimeException('Too many posters selected.');
                 foreach($saved as $poster){$r=$this->ocr->scan(Uploads::path($poster['storage_name']));PosterOcr::save((int)$poster['id'],$r);unset($r['text'],$r['hash'],$r['provider']);$results[]=$r;}
                 foreach($files as $file){if($file['error']!==UPLOAD_ERR_OK||!is_uploaded_file($file['tmp_name']))throw new \RuntimeException('A selected image could not be scanned. Use images up to 8 MB each.');$r=$this->ocr->scan($file['tmp_name']);unset($r['text'],$r['hash'],$r['provider']);$results[]=$r;}
-                header('Content-Type: application/json');echo json_encode(['posters'=>$results],JSON_THROW_ON_ERROR);return;
+                header('Content-Type: application/json');echo json_encode(['posters'=>$results,'usage'=>(new \App\Services\OcrUsage())->status()],JSON_THROW_ON_ERROR);return;
             case '/history/delete':
                 History::remove($id,(string)($_POST['kind'] ?? ''),(int)($_POST['id'] ?? 0),($_POST['confirmed'] ?? '')==='1');
                 $_SESSION['flash']='Local history record deleted. Drafts, files, synchronization IDs and WordPress content were preserved.';go('/history');

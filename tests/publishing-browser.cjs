@@ -27,8 +27,8 @@ const path=require('node:path');
    await page.getByRole('button',{name:'Cancel',exact:true}).click();
   }
   await page.screenshot({path:path.join(__dirname,'../storage/screenshots/phase2-review-mobile.png'),fullPage:true});
-  await page.goto(base+'/scheduled');await page.locator('#poster').setInputFiles(path.join(__dirname,'../public/assets/paleco-logo.png'));await page.locator('#date').fill('2026-10-25');await page.locator('#date').dispatchEvent('change');await page.getByRole('button',{name:'Publish to WordPress'}).click();
-  await page.getByRole('button',{name:'Publish to WordPress',exact:true}).click();await page.locator('#publish-dialog [name=confirmed]').check();await page.getByRole('button',{name:'Confirm and publish'}).click();await page.getByRole('link',{name:'View on WordPress',exact:true}).waitFor();
+  await page.goto(base+'/scheduled');await page.locator('#poster').setInputFiles(path.join(__dirname,'../public/assets/paleco-logo.png'));await page.locator('#date').fill('2026-10-25');await page.locator('#date').dispatchEvent('change');await page.getByRole('button',{name:'Publish',exact:true}).click();
+  await page.locator('#scheduled-confirm').waitFor({state:'visible'});await page.getByRole('button',{name:'Confirm & Publish',exact:true}).click();await page.locator('#scheduled-success').waitFor({state:'visible'});
   assert.deepEqual(errors,[]);console.log('BROWSER PASS: text draft, modal confirmation, same-post publication/update, poster publishing and mobile review layouts.');
  }finally{await browser.close();}
 })().catch(error=>{console.error(error.message);process.exit(1);});

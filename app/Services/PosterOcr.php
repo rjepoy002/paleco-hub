@@ -3,15 +3,24 @@ namespace App\Services;
 use App\Models\DB;
 final class PosterOcr {
     public function __construct(private ?VisionTransport $transport=null) {}
+    public static function configurationError(): ?string {
+        $provider=trim(env('OCR_PROVIDER','none'));
+        if($provider===''||$provider==='none')return 'Automatic OCR is disabled (OCR_PROVIDER=none). Ask an administrator to configure OCR_PROVIDER=google_vision and GOOGLE_APPLICATION_CREDENTIALS; enter the date manually meanwhile.';
+        if($provider!=='google_vision')return 'Unsupported OCR_PROVIDER. This installation supports google_vision; ask an administrator to correct the setting.';
+        return GoogleVisionTransport::configurationError();
+    }
     public function scan(string $path): array {
         Uploads::validate($path);$hash=hash_file('sha256',$path);$provider=$this->transport?'mock':env('OCR_PROVIDER','none');
-        $key=hash('sha256','dates-v1:'.$provider.':'.$hash);$lock='hub-ocr-'.substr($key,0,40);
+        if(!$this->transport&&($error=self::configurationError()))return $this->unavailable($provider,$hash,$error);
+        $key=hash('sha256','dates-v2:'.$provider.':'.$hash);$lock='hub-ocr-'.substr($key,0,40);
         if((int)DB::query('SELECT GET_LOCK(?,25)',[$lock])->fetchColumn()!==1)return $this->unavailable($provider,$hash,'OCR is busy. Enter the date manually.');
         try{
             $cached=DB::query('SELECT result_json FROM ocr_cache WHERE cache_key=? AND expires_at>UTC_TIMESTAMP()',[$key])->fetchColumn();if($cached)return json_decode($cached,true,512,JSON_THROW_ON_ERROR);
-            if(!$this->transport&&($provider!=='google_vision'||!env('GOOGLE_APPLICATION_CREDENTIALS')))$result=$this->unavailable($provider,$hash,'OCR is not configured. Read the poster and enter the interruption date manually.');
-            else{try{$text=($this->transport ?? new GoogleVisionTransport())->text($path);$result=InterruptionDates::extract($text)+['provider'=>$provider,'hash'=>$hash];}catch(\Throwable $ex){$result=$this->unavailable($provider,$hash,'OCR is unavailable or quota-limited. Read this poster and enter the date manually.');}}
-            $ttl=$result['status']==='unavailable'?60:31536000;
+            try{$text=($this->transport ?? new GoogleVisionTransport())->text($path);$result=InterruptionDates::extract($text)+['provider'=>$provider,'hash'=>$hash];}
+            catch(\Throwable $ex){$result=$this->unavailable($provider,$hash,$ex instanceof OcrFailure?$ex->getMessage():'OCR service failed. Retry later or enter the interruption date manually; ask an administrator to check the provider.');}
+            // Do not let a cached quota/provider failure delay recovery at the month boundary.
+            if($result['status']==='unavailable')return $result;
+            $ttl=31536000;
             DB::query('INSERT INTO ocr_cache(cache_key,result_json,expires_at) VALUES (?,?,DATE_ADD(UTC_TIMESTAMP(),INTERVAL ? SECOND)) ON DUPLICATE KEY UPDATE result_json=VALUES(result_json),expires_at=VALUES(expires_at)',[$key,json_encode($result,JSON_THROW_ON_ERROR),$ttl]);return $result;
         }finally{DB::query('SELECT RELEASE_LOCK(?)',[$lock]);}
     }
